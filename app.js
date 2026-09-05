@@ -132,6 +132,32 @@ async function saveSettingKey(key, value) {
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
 
+let enrollTargetStaff = null; // set when re-enrolling an existing (seeded) staff member's fingerprint
+
+// Delegated, defensive modal-close handling — attached immediately, at the
+// very top of the script, so a Cancel/backdrop tap or Escape keypress always
+// closes the Enroll modal even if some other code later in this file throws
+// and prevents a later, more narrowly-scoped listener from ever binding.
+function closeEnrollModal() {
+  const modal = document.getElementById('modalEnroll');
+  if (modal) modal.hidden = true;
+  const nameEl = document.getElementById('enrollName');
+  const idEl = document.getElementById('enrollId');
+  const roleEl = document.getElementById('enrollRole');
+  if (nameEl) nameEl.disabled = false;
+  if (idEl) idEl.disabled = false;
+  if (roleEl) roleEl.disabled = false;
+  enrollTargetStaff = null;
+}
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#btnEnrollCancel')) { closeEnrollModal(); return; }
+  // Tapping the dark backdrop (not the white card itself) also closes it.
+  if (e.target.id === 'modalEnroll') { closeEnrollModal(); }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeEnrollModal();
+});
+
 function toast(msg, ms = 2600) {
   const el = $('#toast');
   el.textContent = msg;
@@ -696,8 +722,6 @@ async function renderStaffTab() {
   });
 }
 
-let enrollTargetStaff = null; // set when re-enrolling an existing (seeded) staff member's fingerprint
-
 function openEnrollModal(mode, staffMember) {
   state.enrollMode = mode;
   const isExisting = mode === 'existing';
@@ -718,13 +742,6 @@ function openEnrollModal(mode, staffMember) {
 }
 
 $('#btnAddStaff').addEventListener('click', () => openEnrollModal('new'));
-$('#btnEnrollCancel').addEventListener('click', () => {
-  $('#modalEnroll').hidden = true;
-  $('#enrollName').disabled = false;
-  $('#enrollId').disabled = false;
-  $('#enrollRole').disabled = false;
-  enrollTargetStaff = null;
-});
 
 $('#btnEnrollFingerprint').addEventListener('click', async () => {
   const name = $('#enrollName').value.trim();
