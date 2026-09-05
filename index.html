@@ -168,10 +168,13 @@
       <div class="settings-group">
         <label class="settings-label">School perimeter (geofence)</label>
         <div class="geofence-box">
-          <p id="geofenceCurrent" class="geofence-current">Not set yet.</p>
-          <button id="btnCaptureGeofence" class="mini-btn">📍 Set to my current location</button>
-          <label class="settings-label small">Radius: <span id="radiusVal">150</span> m</label>
-          <input id="setRadius" type="range" min="30" max="500" step="10" value="150">
+          <p id="geofenceCurrent" class="geofence-current">Loading…</p>
+          <p class="geofence-note">This is the surveyed property boundary (from the perimeter fence file), not a simple radius — staff must be inside the actual fence line to sign in or out.</p>
+          <label class="settings-label small">GPS tolerance buffer: <span id="bufferVal">25</span> m</label>
+          <input id="setBuffer" type="range" min="0" max="60" step="5" value="25">
+          <p class="geofence-note">Absorbs normal GPS drift near the fence line. Increase it a little if staff right at the gate get rejected; keep it low to stay strict.</p>
+          <button id="btnTestGeofence" class="mini-btn">📍 Test this device against the fence</button>
+          <p id="geofenceTestResult" class="geofence-current"></p>
         </div>
       </div>
       <div class="settings-group">
@@ -186,7 +189,7 @@
   <!-- ===== ENROLL STAFF MODAL ===== -->
   <div id="modalEnroll" class="modal" hidden>
     <div class="modal-card">
-      <h3>Enroll New Staff</h3>
+      <h3 id="modalEnrollTitle">Enroll New Staff</h3>
       <label class="settings-label">Full name</label>
       <input id="enrollName" type="text" placeholder="e.g. Mrs. Adebayo Folake">
       <label class="settings-label">Staff ID</label>

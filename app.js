@@ -9,13 +9,48 @@ const DB_NAME = 'cac_attendance';
 const DB_VERSION = 1;
 let db;
 
+/* Surveyed school perimeter fence (Criterion_perimeter_fence.kml),
+   converted from KML's lon,lat order to [lat, lng] pairs. This is the
+   real property boundary, not a circle — staff must be inside this
+   polygon (plus a small GPS-accuracy buffer) to sign in/out. */
+const SCHOOL_PERIMETER = [
+  [7.831456071231706, 4.576847563576805],
+  [7.831413785775986, 4.577172593085352],
+  [7.832362344414676, 4.577344858839034],
+  [7.832324496979382, 4.57696277909487]
+];
+
 const DEFAULT_SETTINGS = {
   schoolName: 'Criterion Amazing College',
   resumeTime: '08:00',
   closeTime: '15:00',
-  geofence: null,        // { lat, lng, radius }
+  geofenceBufferM: 25,   // tolerance in meters, to absorb GPS drift
   adminPinHash: null
 };
+
+/* Staff seeded from Staff_List.docx (2026/2027 session working team).
+   No fingerprint/face credential yet — each person still enrolls their
+   own biometric on the kiosk device on first use. */
+const SEED_STAFF = [
+  { staffId: 'CAC-001', name: 'Ibraheem K. Abiola', role: 'Coordinator, Senior Secondary School' },
+  { staffId: 'CAC-002', name: 'Salahudeen Olawumi Mariam', role: 'Coordinator, Junior Secondary School' },
+  { staffId: 'CAC-003', name: 'Babalola Saidat A.', role: 'Coordinator, Nursery and Primary School' },
+  { staffId: 'CAC-004', name: 'Bolaji Sadiat Kikelomo', role: 'Teaching Staff' },
+  { staffId: 'CAC-005', name: 'Yusuf Ganiyu Laja', role: 'Teaching Staff' },
+  { staffId: 'CAC-006', name: 'Ibraheem Lukman Ademola', role: 'Teaching Staff' },
+  { staffId: 'CAC-007', name: 'Mallam Adedokun Misbahudeen', role: 'Teaching Staff' },
+  { staffId: 'CAC-008', name: 'Olawale Dolapo Narmat', role: 'Teaching Staff' },
+  { staffId: 'CAC-009', name: 'Egbetokun Tawakalit', role: 'Teaching Staff' },
+  { staffId: 'CAC-010', name: 'Adebayo Aliu Alade', role: 'Non-Teaching Staff' },
+  { staffId: 'CAC-011', name: 'Jeyelaye Bolanle', role: 'Non-Teaching Staff' },
+  { staffId: 'CAC-012', name: 'Amsat Balqees Olaitan', role: 'Teaching Staff' },
+  { staffId: 'CAC-013', name: 'AbdulQudus Ayomide Abdulkareem', role: 'Non-Teaching Staff' },
+  { staffId: 'CAC-014', name: 'Hassan Sofiyat', role: 'Non-Teaching Staff' },
+  { staffId: 'CAC-015', name: 'Mrs Olatunji', role: 'Care Giver' },
+  { staffId: 'CAC-016', name: 'Popoola Idris Bamigboye', role: 'Teaching Staff' },
+  { staffId: 'CAC-017', name: 'Adebayo Ilyas Akinola', role: 'Teaching Staff' },
+  { staffId: 'CAC-018', name: 'Adebayo Rasheed Olawale', role: 'Head of Administration' }
+];
 
 let state = {
   settings: { ...DEFAULT_SETTINGS },
@@ -24,7 +59,8 @@ let state = {
   pendingAction: null,   // 'in' | 'out'
   pendingStaff: null,
   pinPurpose: 'admin',   // 'admin' | 'setpin'
-  watchId: null
+  watchId: null,
+  enrollMode: 'new'      // 'new' | 'existing' (re-enrolling a seeded staff member's fingerprint)
 };
 
 /* ---------------------- IndexedDB helpers ---------------------- */
@@ -129,6 +165,68 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+/* ---------------------- Polygon geofence (perimeter fence) ---------------------- */
+
+// Local flat-earth projection to meters, centered near the fence, good enough
+// for a boundary a few hundred meters across.
+function toLocalMeters(lat, lng, originLat) {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos(originLat * Math.PI / 180);
+  return { x: lng * mPerDegLng, y: lat * mPerDegLat };
+}
+
+function polygonCentroid(poly) {
+  const lat = poly.reduce((s, p) => s + p[0], 0) / poly.length;
+  const lng = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+  return { lat, lng };
+}
+
+// Ray-casting point-in-polygon test.
+function pointInPolygon(lat, lng, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const yi = poly[i][0], xi = poly[i][1];
+    const yj = poly[j][0], xj = poly[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Shortest distance in meters from a point to the polygon boundary (its
+// nearest edge). Used to tell staff how far away they are when outside.
+function distanceToPolygonMeters(lat, lng, poly) {
+  const origin = polygonCentroid(poly).lat;
+  const p = toLocalMeters(lat, lng, origin);
+  let min = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = toLocalMeters(poly[i][0], poly[i][1], origin);
+    const b = toLocalMeters(poly[j][0], poly[j][1], origin);
+    min = Math.min(min, pointToSegmentDist(p, a, b));
+  }
+  return min;
+}
+
+function pointToSegmentDist(p, a, b) {
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const apx = p.x - a.x, apy = p.y - a.y;
+  const lenSq = abx * abx + aby * aby;
+  let t = lenSq === 0 ? 0 : (apx * abx + apy * aby) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = a.x + t * abx, cy = a.y + t * aby;
+  return Math.hypot(p.x - cx, p.y - cy);
+}
+
+// Combines the strict polygon test with a small buffer (meters) so normal
+// GPS drift near the boundary doesn't lock people out right at the gate.
+function evaluatePerimeter(lat, lng, bufferM) {
+  const strictlyInside = pointInPolygon(lat, lng, SCHOOL_PERIMETER);
+  const dist = distanceToPolygonMeters(lat, lng, SCHOOL_PERIMETER);
+  const inside = strictlyInside || dist <= bufferM;
+  return { inside, distance: strictlyInside ? 0 : dist };
+}
+
 async function sha256Hex(str) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -181,17 +279,35 @@ function setGeoUI(status, text) {
 }
 
 function evaluateGeofence(lat, lng) {
-  const gf = state.settings.geofence;
-  if (!gf) {
-    setGeoUI('outside', 'School perimeter not set yet — ask admin to configure it in Settings.');
-    return;
-  }
-  const dist = haversineMeters(lat, lng, gf.lat, gf.lng);
-  state.geo = { status: dist <= gf.radius ? 'inside' : 'outside', lat, lng, distance: dist };
-  if (dist <= gf.radius) {
-    setGeoUI('inside', 'You are within the school compound.');
+  const bufferM = state.settings.geofenceBufferM ?? DEFAULT_SETTINGS.geofenceBufferM;
+  const { inside, distance } = evaluatePerimeter(lat, lng, bufferM);
+  const prevStatus = state.geo.status;
+  state.geo = { status: inside ? 'inside' : 'outside', lat, lng, distance };
+
+  if (inside) {
+    setGeoUI('inside', 'You are within the school perimeter fence.');
+    // Fire the "you can now sign in/out" alert only on the transition into
+    // the fence, not on every location update while already inside.
+    if (prevStatus !== 'inside') {
+      announceEnteredPerimeter();
+    }
   } else {
-    setGeoUI('outside', `You're about ${Math.round(dist)}m from the school — move inside the compound to sign in.`);
+    setGeoUI('outside', `You're about ${Math.round(distance)}m from the school perimeter fence — move inside it to sign in or out.`);
+  }
+}
+
+function announceEnteredPerimeter() {
+  toast('✅ You are now within the school perimeter — you can sign in or sign out.', 4000);
+  if ('vibrate' in navigator) {
+    try { navigator.vibrate([60, 40, 60]); } catch (_) {}
+  }
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(state.settings.schoolName, {
+        body: 'You can now sign in or sign out — you\u2019re inside the school perimeter.',
+        icon: 'icons/icon-192.png'
+      });
+    } catch (_) {}
   }
 }
 
@@ -234,13 +350,20 @@ function renderStaffPicker(filter = '') {
   items.forEach(s => {
     const row = document.createElement('button');
     row.className = 'staff-row';
+    const needsEnroll = !s.credentialId;
     row.innerHTML = `
       <span class="staff-avatar">${initials(s.name)}</span>
       <span class="staff-row-text">
         <span class="staff-row-name">${escapeHtml(s.name)}</span>
-        <span class="staff-row-id">${escapeHtml(s.staffId)} · ${escapeHtml(s.role)}</span>
+        <span class="staff-row-id">${escapeHtml(s.staffId)} · ${escapeHtml(s.role)}${needsEnroll ? ' · fingerprint not set up' : ''}</span>
       </span>`;
-    row.addEventListener('click', () => openVerify(s));
+    row.addEventListener('click', () => {
+      if (needsEnroll) {
+        toast(`${s.name.split(' ')[0]} hasn't registered a fingerprint/face yet — see the admin (Staff tab) to set that up first.`, 4200);
+        return;
+      }
+      openVerify(s);
+    });
     list.appendChild(row);
   });
 }
@@ -548,13 +671,20 @@ async function renderStaffTab() {
   state.staff.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
     const row = document.createElement('div');
     row.className = 'staff-admin-row';
+    const needsEnroll = !s.credentialId;
     row.innerHTML = `
       <span class="staff-avatar">${initials(s.name)}</span>
       <span class="staff-row-text">
         <span class="staff-row-name">${escapeHtml(s.name)}</span>
         <span class="staff-row-id">${escapeHtml(s.staffId)} · ${escapeHtml(s.role)}</span>
+        ${needsEnroll ? '<span class="enroll-needed-badge">Needs fingerprint enrollment</span>' : ''}
       </span>
+      ${needsEnroll ? `<button class="mini-btn enroll-staff-btn" data-id="${escapeHtml(s.staffId)}">Enroll</button>` : ''}
       <button class="remove-staff-btn" data-id="${escapeHtml(s.staffId)}">Remove</button>`;
+    const enrollBtn = row.querySelector('.enroll-staff-btn');
+    if (enrollBtn) {
+      enrollBtn.addEventListener('click', () => openEnrollModal('existing', s));
+    }
     row.querySelector('.remove-staff-btn').addEventListener('click', async () => {
       if (!confirm(`Remove ${s.name} from the staff list? Their past attendance records will be kept.`)) return;
       await idbDelete('staff', s.staffId);
@@ -566,19 +696,41 @@ async function renderStaffTab() {
   });
 }
 
-$('#btnAddStaff').addEventListener('click', () => {
-  $('#enrollName').value = '';
-  $('#enrollId').value = '';
-  $('#enrollRole').value = 'Teaching Staff';
+let enrollTargetStaff = null; // set when re-enrolling an existing (seeded) staff member's fingerprint
+
+function openEnrollModal(mode, staffMember) {
+  state.enrollMode = mode;
+  const isExisting = mode === 'existing';
+  enrollTargetStaff = isExisting ? staffMember : null;
+  $('#enrollName').value = isExisting ? staffMember.name : '';
+  $('#enrollId').value = isExisting ? staffMember.staffId : '';
+  // The role <select> only offers 3 preset options, which may not match a
+  // seeded staff member's real role (e.g. "Coordinator, ..."), so for
+  // existing staff we keep their role text as-is (see enrollTargetStaff)
+  // rather than forcing the dropdown to a mismatched value.
+  $('#enrollRole').value = isExisting ? 'Teaching Staff' : 'Teaching Staff';
+  $('#enrollName').disabled = isExisting;
+  $('#enrollId').disabled = isExisting;
+  $('#enrollRole').disabled = isExisting;
+  $('#modalEnrollTitle').textContent = isExisting ? `Enroll Fingerprint — ${staffMember.name}` : 'Enroll New Staff';
   $('#enrollError').hidden = true;
   $('#modalEnroll').hidden = false;
+}
+
+$('#btnAddStaff').addEventListener('click', () => openEnrollModal('new'));
+$('#btnEnrollCancel').addEventListener('click', () => {
+  $('#modalEnroll').hidden = true;
+  $('#enrollName').disabled = false;
+  $('#enrollId').disabled = false;
+  $('#enrollRole').disabled = false;
+  enrollTargetStaff = null;
 });
-$('#btnEnrollCancel').addEventListener('click', () => { $('#modalEnroll').hidden = true; });
 
 $('#btnEnrollFingerprint').addEventListener('click', async () => {
   const name = $('#enrollName').value.trim();
   const staffId = $('#enrollId').value.trim();
-  const role = $('#enrollRole').value;
+  const isExisting = state.enrollMode === 'existing';
+  const role = isExisting && enrollTargetStaff ? enrollTargetStaff.role : $('#enrollRole').value;
   const errEl = $('#enrollError');
   errEl.hidden = true;
 
@@ -588,7 +740,7 @@ $('#btnEnrollFingerprint').addEventListener('click', async () => {
     return;
   }
   const existing = state.staff.find(s => s.staffId.toLowerCase() === staffId.toLowerCase());
-  if (existing) {
+  if (existing && !isExisting) {
     errEl.textContent = 'A staff member with this ID already exists.';
     errEl.hidden = false;
     return;
@@ -629,7 +781,11 @@ $('#btnEnrollFingerprint').addEventListener('click', async () => {
     };
     await idbPut('staff', staffMember);
     $('#modalEnroll').hidden = true;
-    toast(`${name} enrolled successfully.`);
+    $('#enrollName').disabled = false;
+    $('#enrollId').disabled = false;
+    $('#enrollRole').disabled = false;
+    toast(isExisting ? `${name}'s fingerprint/face is now registered.` : `${name} enrolled successfully.`);
+    enrollTargetStaff = null;
     await renderStaffTab();
     await renderRecordsTab();
   } catch (err) {
@@ -644,33 +800,35 @@ function renderSettingsTab() {
   $('#setSchoolName').value = state.settings.schoolName;
   $('#setResumeTime').value = state.settings.resumeTime;
   $('#setCloseTime').value = state.settings.closeTime;
-  $('#setRadius').value = state.settings.geofence ? state.settings.geofence.radius : 150;
-  $('#radiusVal').textContent = $('#setRadius').value;
+  $('#setBuffer').value = state.settings.geofenceBufferM ?? DEFAULT_SETTINGS.geofenceBufferM;
+  $('#bufferVal').textContent = $('#setBuffer').value;
   $('#setNewPin').value = '';
   $('#settingsSaved').hidden = true;
 
-  const gf = state.settings.geofence;
-  $('#geofenceCurrent').textContent = gf
-    ? `Center set · ${gf.lat.toFixed(5)}, ${gf.lng.toFixed(5)} · radius ${gf.radius}m`
-    : 'Not set yet — stand at the school gate and tap the button below.';
+  $('#geofenceCurrent').textContent =
+    `Perimeter fence loaded from survey · ${SCHOOL_PERIMETER.length} boundary points · Criterion Amazing College, Osogbo.`;
+  $('#geofenceTestResult').textContent = '';
 }
 
-$('#setRadius').addEventListener('input', (e) => { $('#radiusVal').textContent = e.target.value; });
+$('#setBuffer').addEventListener('input', (e) => { $('#bufferVal').textContent = e.target.value; });
 
-let capturedGeo = null;
-$('#btnCaptureGeofence').addEventListener('click', async () => {
-  const btn = $('#btnCaptureGeofence');
+$('#btnTestGeofence').addEventListener('click', async () => {
+  const btn = $('#btnTestGeofence');
+  const out = $('#geofenceTestResult');
   btn.disabled = true;
-  btn.textContent = 'Capturing…';
+  btn.textContent = 'Checking…';
   try {
     const pos = await getOneShotPosition();
-    capturedGeo = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    $('#geofenceCurrent').textContent = `Captured · ${capturedGeo.lat.toFixed(5)}, ${capturedGeo.lng.toFixed(5)} — tap "Save Settings" to confirm.`;
+    const bufferM = parseInt($('#setBuffer').value, 10);
+    const { inside, distance } = evaluatePerimeter(pos.coords.latitude, pos.coords.longitude, bufferM);
+    out.textContent = inside
+      ? '✅ This device is currently inside the perimeter fence.'
+      : `⚠️ This device is currently about ${Math.round(distance)}m outside the perimeter fence.`;
   } catch {
-    toast('Could not read location. Check location permissions.');
+    out.textContent = 'Could not read location. Check location permissions.';
   } finally {
     btn.disabled = false;
-    btn.textContent = '📍 Set to my current location';
+    btn.textContent = '📍 Test this device against the fence';
   }
 });
 
@@ -678,14 +836,7 @@ $('#btnSaveSettings').addEventListener('click', async () => {
   await saveSettingKey('schoolName', $('#setSchoolName').value.trim() || DEFAULT_SETTINGS.schoolName);
   await saveSettingKey('resumeTime', $('#setResumeTime').value || DEFAULT_SETTINGS.resumeTime);
   await saveSettingKey('closeTime', $('#setCloseTime').value || DEFAULT_SETTINGS.closeTime);
-
-  const radius = parseInt($('#setRadius').value, 10);
-  if (capturedGeo) {
-    await saveSettingKey('geofence', { lat: capturedGeo.lat, lng: capturedGeo.lng, radius });
-    capturedGeo = null;
-  } else if (state.settings.geofence) {
-    await saveSettingKey('geofence', { ...state.settings.geofence, radius });
-  }
+  await saveSettingKey('geofenceBufferM', parseInt($('#setBuffer').value, 10));
 
   const newPin = $('#setNewPin').value.trim();
   if (newPin) {
@@ -715,12 +866,32 @@ if ('serviceWorker' in navigator) {
 
 /* ---------------------- Init ---------------------- */
 
+async function seedStaffIfEmpty() {
+  const existing = await idbGetAll('staff');
+  if (existing.length > 0) return;
+  for (const s of SEED_STAFF) {
+    await idbPut('staff', {
+      staffId: s.staffId,
+      name: s.name,
+      role: s.role,
+      credentialId: null,   // not yet enrolled — they register their own fingerprint/face on first visit
+      userHandle: null,
+      createdAt: new Date().toISOString()
+    });
+  }
+}
+
 async function init() {
   db = await openDb();
   await loadSettings();
+  await seedStaffIfEmpty();
   state.staff = await idbGetAll('staff');
 
   $('.topbar-school').textContent = state.settings.schoolName.toUpperCase();
+
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
 
   tickClock();
   setInterval(tickClock, 1000 * 30);
