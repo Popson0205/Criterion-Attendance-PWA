@@ -31,6 +31,22 @@ let state = {
   watchId: null
 };
 
+/* ---------------------- Device identity (for device-binding) ---------------------- */
+
+// A random ID generated once and stored permanently on this device. The
+// server binds it to whichever staff member first signs in successfully
+// with the correct PIN on it — after that, only this device (with the
+// right PIN) can sign in as that person. This is what stops someone from
+// picking a colleague's name on their own phone.
+function getDeviceId() {
+  let id = localStorage.getItem('cac_device_id');
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''));
+    localStorage.setItem('cac_device_id', id);
+  }
+  return id;
+}
+
 /* ---------------------- Polygon geofence ---------------------- */
 
 function toLocalMeters(lat, lng, originLat) {
@@ -189,16 +205,17 @@ function populateStaffSelect() {
   const current = select.value;
   const sorted = [...state.staff].sort((a, b) => a.name.localeCompare(b.name));
   select.innerHTML = '<option value="">Select your name…</option>' +
-    sorted.map(s => `<option value="${escapeHtml(s.staffId)}">${escapeHtml(s.name)}</option>`).join('');
+    sorted.map(s => `<option value="${escapeHtml(s.staffId)}">${escapeHtml(s.name)}${!s.hasPin ? ' (no PIN set)' : ''}</option>`).join('');
   if (sorted.some(s => s.staffId === current)) select.value = current;
   updateSignButtons();
 }
 
 function updateSignButtons() {
   const hasStaff = !!$('#staffSelect').value;
+  const hasPin = $('#staffPin').value.trim().length >= 4;
   const inFence = state.geo.status === 'inside';
-  $('#btnSignIn').disabled = !(hasStaff && inFence);
-  $('#btnSignOut').disabled = !(hasStaff && inFence);
+  $('#btnSignIn').disabled = !(hasStaff && hasPin && inFence);
+  $('#btnSignOut').disabled = !(hasStaff && hasPin && inFence);
 }
 
 $('#staffSelect').addEventListener('change', (e) => {
@@ -206,14 +223,17 @@ $('#staffSelect').addEventListener('change', (e) => {
   $('#staffIdDisplay').value = s ? s.staffId : '';
   updateSignButtons();
 });
+$('#staffPin').addEventListener('input', updateSignButtons);
 
 $('#btnSignIn').addEventListener('click', () => attemptSignAction('in'));
 $('#btnSignOut').addEventListener('click', () => attemptSignAction('out'));
 
 async function attemptSignAction(type) {
   const staffId = $('#staffSelect').value;
+  const pin = $('#staffPin').value.trim();
   const staffMember = state.staff.find(s => s.staffId === staffId);
   if (!staffMember) { toast('Please select your name first.'); return; }
+  if (pin.length < 4) { toast('Enter your 4-digit PIN.'); return; }
   if (state.geo.status !== 'inside') { toast('You need to be inside the school perimeter to sign in or out.'); return; }
 
   $('#btnSignIn').disabled = true;
@@ -221,12 +241,17 @@ async function attemptSignAction(type) {
   try {
     const record = await api('/api/attendance', {
       method: 'POST',
-      body: JSON.stringify({ staffId: staffMember.staffId, type, lat: state.geo.lat, lng: state.geo.lng })
+      body: JSON.stringify({
+        staffId: staffMember.staffId, type, lat: state.geo.lat, lng: state.geo.lng,
+        pin, deviceId: getDeviceId()
+      })
     });
     showResult(record);
     $('#staffSelect').value = '';
     $('#staffIdDisplay').value = '';
+    $('#staffPin').value = '';
   } catch (err) {
+    $('#staffPin').value = ''; // never leave a wrong/used PIN sitting in the field
     if (err.status === 403) {
       toast(err.message);
       startGeoWatch();

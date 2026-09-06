@@ -8,7 +8,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
-const { pool, init, DEFAULT_SETTINGS } = require('./db');
+const { pool, init, DEFAULT_SETTINGS, randomPin } = require('./db');
 const { evaluatePerimeter } = require('./geofence');
 
 const app = express();
@@ -86,30 +86,53 @@ app.get('/api/settings/public', async (req, res) => {
   }
 });
 
-// Staff list for the picker/dropdown.
+// Staff list for the picker/dropdown. hasPin is shown so the dropdown can
+// hint "PIN not set" — not sensitive, doesn't expose the PIN itself.
 app.get('/api/staff', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT staff_id, name, role FROM staff ORDER BY name ASC`
+      `SELECT staff_id, name, role, (pin_hash IS NOT NULL) AS has_pin FROM staff ORDER BY name ASC`
     );
-    res.json(rows.map(r => ({ staffId: r.staff_id, name: r.name, role: r.role })));
+    res.json(rows.map(r => ({ staffId: r.staff_id, name: r.name, role: r.role, hasPin: r.has_pin })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load staff list.' });
   }
 });
 
-// Record a sign-in/out. The server independently re-checks the perimeter
-// fence and the resumption/closing time — the authoritative check.
+// Record a sign-in/out. Requires the staff member's PIN, and binds (or
+// checks) the requesting device — this is what stops one phone from
+// signing in as someone else. The server independently re-checks the
+// perimeter fence and the resumption/closing time too.
 app.post('/api/attendance', async (req, res) => {
   try {
-    const { staffId, type, lat, lng } = req.body || {};
+    const { staffId, type, lat, lng, pin, deviceId } = req.body || {};
     if (!staffId || (type !== 'in' && type !== 'out') || typeof lat !== 'number' || typeof lng !== 'number') {
       return res.status(400).json({ error: 'Missing or invalid sign-in data.' });
+    }
+    if (!pin || !deviceId) {
+      return res.status(400).json({ error: 'PIN and device information are required.' });
     }
     const { rows } = await pool.query('SELECT * FROM staff WHERE staff_id = $1', [staffId]);
     if (!rows.length) return res.status(404).json({ error: 'Staff member not found.' });
     const staffMember = rows[0];
+
+    if (!staffMember.pin_hash) {
+      return res.status(400).json({ error: 'No PIN has been set for this staff member yet — ask the admin to set one.' });
+    }
+    const pinOk = await bcrypt.compare(String(pin), staffMember.pin_hash);
+    if (!pinOk) {
+      return res.status(401).json({ error: 'Incorrect PIN.' });
+    }
+
+    if (!staffMember.device_token) {
+      // First successful sign-in from any device — bind it permanently.
+      await pool.query('UPDATE staff SET device_token = $1 WHERE staff_id = $2', [deviceId, staffId]);
+    } else if (staffMember.device_token !== deviceId) {
+      return res.status(403).json({
+        error: 'This name is already registered to a different phone. If this is now your phone, ask the admin to reset your device in the Staff tab.'
+      });
+    }
 
     const bufferM = (await getSetting('geofenceBufferM')) ?? DEFAULT_SETTINGS.geofenceBufferM;
     const { inside, distance } = evaluatePerimeter(lat, lng, bufferM);
@@ -221,8 +244,13 @@ app.put('/api/admin/settings', requireAdmin, async (req, res) => {
 // Full staff list for the admin Staff tab.
 app.get('/api/admin/staff', requireAdmin, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT staff_id, name, role FROM staff ORDER BY name ASC');
-    res.json(rows.map(r => ({ staffId: r.staff_id, name: r.name, role: r.role })));
+    const { rows } = await pool.query(
+      `SELECT staff_id, name, role, (pin_hash IS NOT NULL) AS has_pin, (device_token IS NOT NULL) AS has_device
+       FROM staff ORDER BY name ASC`
+    );
+    res.json(rows.map(r => ({
+      staffId: r.staff_id, name: r.name, role: r.role, hasPin: r.has_pin, hasDevice: r.has_device
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not load staff list.' });
@@ -239,11 +267,34 @@ app.post('/api/admin/staff', requireAdmin, async (req, res) => {
     if (existing.rows.length) {
       return res.status(400).json({ error: 'A staff member with this ID already exists.' });
     }
-    await pool.query(`INSERT INTO staff (staff_id, name, role) VALUES ($1,$2,$3)`, [staffId, name, role]);
-    res.json({ staffId, name, role });
+    const pin = randomPin();
+    const pinHash = await bcrypt.hash(pin, 10);
+    await pool.query(
+      `INSERT INTO staff (staff_id, name, role, pin_hash) VALUES ($1,$2,$3,$4)`,
+      [staffId, name, role, pinHash]
+    );
+    res.json({ staffId, name, role, pin });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Could not add staff member.' });
+  }
+});
+
+// Generates a fresh PIN and clears the bound device — use this for a
+// staff member who never got a PIN, forgot it, or got a new phone.
+app.post('/api/admin/staff/:id/reset-pin', requireAdmin, async (req, res) => {
+  try {
+    const pin = randomPin();
+    const pinHash = await bcrypt.hash(pin, 10);
+    const { rows } = await pool.query(
+      `UPDATE staff SET pin_hash = $1, device_token = NULL WHERE staff_id = $2 RETURNING staff_id, name`,
+      [pinHash, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Staff member not found.' });
+    res.json({ staffId: rows[0].staff_id, name: rows[0].name, pin });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not reset PIN.' });
   }
 });
 

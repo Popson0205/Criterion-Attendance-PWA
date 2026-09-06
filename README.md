@@ -22,22 +22,42 @@ backend, instead of one shared kiosk device.
 - **Live boundary map** — the home screen shows an embedded map (Leaflet +
   OpenStreetMap, no API key needed) with the fence outlined in green and a
   dot for your current position, updating live, colored by inside/outside.
-- **Simple sign-in** — pick your name from a dropdown (Staff ID fills in
-  automatically), tap Sign In or Sign Out. No fingerprint step.
+- **Simple sign-in, with real protection against "signing in for a friend":**
+  a teacher picks their name from a dropdown (Staff ID fills in
+  automatically), enters their 4-digit PIN, then taps Sign In or Sign Out.
+  The *first* phone that ever uses the correct PIN for a given name gets
+  permanently bound to that name — after that, both the right PIN **and**
+  that same phone are required. Someone can't just pick a colleague's name
+  on their own phone anymore, even if they somehow knew the PIN.
 - **Shared, centralized records** — staff list, settings, and every
   attendance log live in one Postgres database (Neon), so `/admin` sees
   everyone's sign-ins together, from any device.
 - **Late/early flagging**, **CSV download of the full attendance list**,
-  **add/remove staff from `/admin`**, **installable PWA** (staff side only).
+  **add/remove staff and reset PINs from `/admin`**, **installable PWA**
+  (staff side only).
 
-> **Trade-off worth knowing:** dropping the fingerprint step means sign-in
-> relies entirely on "this phone is inside the fence" rather than "this is
-> provably that specific person." Anyone standing inside the fence with
-> access to the app could pick someone else's name from the dropdown. If
-> that risk matters for your use case (e.g. payroll depends on this data),
-> the fix is re-adding a lightweight per-person check — even just a short
-> PIN per staff member — without bringing back fingerprint/enrollment-code
-> complexity. Say the word if you want it.
+### How the PIN + device-binding actually works
+
+- When admin adds a staff member (or resets someone's PIN), the system
+  generates a random 4-digit PIN and shows it **once** — admin shares it
+  with that person however's convenient (WhatsApp, a printed slip, etc.).
+  It's stored only as a hash from then on; nobody, including admin, can
+  look it up again — only reset it.
+- The first time that PIN is used successfully on a phone, that phone's
+  browser generates a random ID (stored in `localStorage`, so it survives
+  closing the app) and the server permanently ties it to that staff
+  member.
+- From then on, sign-in requires **both** the correct PIN **and** a
+  request coming from that same bound phone. A different phone gets
+  rejected even with the right PIN.
+- **Lost or replaced phone:** admin → Staff tab → "Reset PIN" for that
+  person. This clears the old binding and issues a new PIN — they enter it
+  once on their new phone, which becomes the new bound device.
+- **What this still doesn't stop:** someone handing over their own already
+  signed-in, unlocked phone and PIN to a colleague deliberately. No
+  software-only system can fully prevent that; at that point it's a
+  policy/trust question, same as it would be with a physical sign-in
+  sheet.
 
 ## Architecture
 
@@ -101,18 +121,26 @@ extra config needed. Open the resulting `https://your-app.onrender.com` URL.
    it too. Walk the compound with **"Test this device against the fence"**
    and adjust the GPS buffer if needed.
 4. **Set resumption/closing time** in the same tab.
-5. **Staff list is already seeded** from `Staff_List.docx`. Use **"+ Add
-   Staff"** in `/admin` → Staff tab for anyone new — they'll appear in the
-   dropdown on every phone within a moment (or after they reopen the app).
+5. **Staff list is already seeded** from `Staff_List.docx`, but **none of
+   them have a PIN yet** (they were added before this feature existed).
+   Go to `/admin` → Staff tab → tap **"Set PIN"** next to each name, and
+   share the generated PIN with that person (WhatsApp, printed slip,
+   whatever's easiest). Do this for all seeded staff before telling them
+   to start using the app.
 6. Share the **main URL** (`/`, not `/admin`) with staff. They pick their
-   name and tap Sign In / Sign Out whenever they're inside the fence.
+   name, enter the PIN you gave them, and tap Sign In — the first time
+   only, this also locks their name to that phone.
 
 ## Admin day-to-day
 
 Go to `/admin`, enter the PIN.
 
 - **Add a new staff member:** Staff tab → "+ Add Staff" → name, Staff ID,
-  role. They show up in the dropdown immediately.
+  role → a PIN is generated and shown once — share it with them.
+- **Someone forgot their PIN or got a new phone:** Staff tab → "Reset PIN"
+  next to their name → share the new PIN with them. Their old device is
+  automatically un-bound; the next phone that uses the new PIN becomes the
+  new bound device.
 - **Remove someone:** Staff tab → Remove next to their name (their past
   attendance records are kept).
 - **View today's/any day's attendance:** Records tab, filter by date and/or
@@ -126,9 +154,14 @@ Go to `/admin`, enter the PIN.
   `noindex` tag so search engines won't list it, but anyone who guesses or
   is told the URL can reach the PIN screen (they still need the correct
   PIN to get past it). Don't treat the URL as a secret on its own.
-- **No per-person verification beyond the geofence** — see the trade-off
-  note above. This is the main thing to weigh before treating this data as
-  authoritative for pay or discipline.
+- **Device binding relies on `localStorage`, which clears if someone clears
+  their browser data** (or uses private/incognito mode every time). If
+  that happens, the next sign-in attempt will look like a "new device" to
+  the server and get rejected until admin resets that person's PIN. This
+  is rare in normal day-to-day phone use but worth knowing.
+- **See "what this still doesn't stop" above** — deliberate PIN/phone
+  sharing between colleagues isn't something any software-only system can
+  fully prevent.
 - **The fence shape is fixed in code** (`SCHOOL_PERIMETER` in both
   `public/app.js` and `geofence.js`) — baked in from the KML survey. If the
   boundary changes, both copies need updating with new coordinates.

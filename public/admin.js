@@ -91,9 +91,11 @@ function getOneShotPosition() {
 function closeEnrollModal() {
   const modal = document.getElementById('modalEnroll');
   if (modal) modal.hidden = true;
+  $('#addStaffForm').hidden = false;
+  $('#addStaffPinPanel').hidden = true;
 }
 document.addEventListener('click', (e) => {
-  if (e.target.closest('#btnEnrollCancel')) { closeEnrollModal(); return; }
+  if (e.target.closest('#btnEnrollCancel') || e.target.closest('#btnAddStaffDone')) { closeEnrollModal(); return; }
   if (e.target.id === 'modalEnroll') { closeEnrollModal(); }
 });
 document.addEventListener('keydown', (e) => {
@@ -252,8 +254,29 @@ async function renderStaffTab() {
       <span class="staff-row-text">
         <span class="staff-row-name">${escapeHtml(s.name)}</span>
         <span class="staff-row-id">${escapeHtml(s.staffId)} · ${escapeHtml(s.role)}</span>
+        ${!s.hasPin ? '<span class="enroll-needed-badge">No PIN set yet</span>' : (!s.hasDevice ? '<span class="enroll-needed-badge">PIN set, no phone bound yet</span>' : '')}
       </span>
-      <button class="remove-staff-btn" data-id="${escapeHtml(s.staffId)}">Remove</button>`;
+      <span class="staff-row-actions">
+        <button class="mini-btn reset-pin-btn" data-id="${escapeHtml(s.staffId)}">${s.hasPin ? 'Reset PIN' : 'Set PIN'}</button>
+        <button class="remove-staff-btn" data-id="${escapeHtml(s.staffId)}">Remove</button>
+      </span>`;
+
+    row.querySelector('.reset-pin-btn').addEventListener('click', async () => {
+      if (s.hasPin && !confirm(`Generate a new PIN for ${s.name}? Their old PIN will stop working and their phone will need to be re-bound (they'll enter the new PIN once, on whichever phone they use next).`)) return;
+      try {
+        const res = await adminApi(`/api/admin/staff/${encodeURIComponent(s.staffId)}/reset-pin`, { method: 'POST' });
+        toast(`New PIN generated for ${s.name}.`, 4000);
+        let panel = row.querySelector('.staff-code-row');
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.className = 'staff-code-row';
+          row.querySelector('.staff-row-text').appendChild(panel);
+        }
+        panel.innerHTML = `New PIN: <span class="staff-code-value">${escapeHtml(res.pin)}</span> — share this now, it won't be shown again.`;
+      } catch (err) {
+        if (!handleAdminAuthError(err)) toast('Could not reset PIN.');
+      }
+    });
 
     row.querySelector('.remove-staff-btn').addEventListener('click', async () => {
       if (!confirm(`Remove ${s.name} from the staff list? Their past attendance records will be kept.`)) return;
@@ -276,6 +299,8 @@ function openEnrollModal() {
   $('#enrollId').value = '';
   $('#enrollRole').value = 'Teaching Staff';
   $('#enrollError').hidden = true;
+  $('#addStaffForm').hidden = false;
+  $('#addStaffPinPanel').hidden = true;
   $('#modalEnrollTitle').textContent = 'Add Staff';
   $('#modalEnroll').hidden = false;
 }
@@ -295,12 +320,13 @@ $('#btnEnrollFingerprint').addEventListener('click', async () => {
     return;
   }
   try {
-    await adminApi('/api/admin/staff', {
+    const res = await adminApi('/api/admin/staff', {
       method: 'POST',
       body: JSON.stringify({ staffId, name, role })
     });
-    toast(`${name} added.`);
-    closeEnrollModal();
+    $('#addStaffForm').hidden = true;
+    $('#addStaffPinPanel').hidden = false;
+    $('#addStaffPinValue').textContent = res.pin;
     await renderStaffTab();
   } catch (err) {
     if (handleAdminAuthError(err)) return;

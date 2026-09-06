@@ -102,20 +102,28 @@
   <div id="modalEnroll" class="modal" hidden>
     <div class="modal-card">
       <h3 id="modalEnrollTitle">Add Staff</h3>
-      <label class="settings-label">Full name</label>
-      <input id="enrollName" type="text" placeholder="e.g. Mrs. Adebayo Folake">
-      <label class="settings-label">Staff ID</label>
-      <input id="enrollId" type="text" placeholder="e.g. CAC-019">
-      <label class="settings-label">Role</label>
-      <select id="enrollRole">
-        <option>Teaching Staff</option>
-        <option>Non-Teaching Staff</option>
-        <option>Administrator</option>
-      </select>
-      <p id="enrollError" class="pin-error" hidden></p>
-      <div class="modal-actions">
-        <button id="btnEnrollCancel" class="ghost-btn">Cancel</button>
-        <button id="btnEnrollFingerprint" class="primary-btn">Add Staff</button>
+      <div id="addStaffForm">
+        <label class="settings-label">Full name</label>
+        <input id="enrollName" type="text" placeholder="e.g. Mrs. Adebayo Folake">
+        <label class="settings-label">Staff ID</label>
+        <input id="enrollId" type="text" placeholder="e.g. CAC-019">
+        <label class="settings-label">Role</label>
+        <select id="enrollRole">
+          <option>Teaching Staff</option>
+          <option>Non-Teaching Staff</option>
+          <option>Administrator</option>
+        </select>
+        <p id="enrollError" class="pin-error" hidden></p>
+        <div class="modal-actions">
+          <button id="btnEnrollCancel" class="ghost-btn">Cancel</button>
+          <button id="btnEnrollFingerprint" class="primary-btn">Add Staff</button>
+        </div>
+      </div>
+      <div id="addStaffPinPanel" hidden>
+        <p class="pin-label">Added! Their PIN is:</p>
+        <p id="addStaffPinValue" class="geofence-current" style="font-size:26px;font-weight:800;text-align:center;letter-spacing:3px;"></p>
+        <p class="enroll-note">Share this PIN with them now — it won't be shown again. They'll enter it (along with picking their name) the first time they sign in, which also locks their name to that phone.</p>
+        <button id="btnAddStaffDone" class="primary-btn">Done</button>
       </div>
     </div>
   </div>

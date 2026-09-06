@@ -6,6 +6,7 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -39,9 +40,14 @@ async function initSchema() {
       staff_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       role TEXT NOT NULL,
+      pin_hash TEXT,
+      device_token TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Additive migration for databases created before PIN/device-binding existed.
+  await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
+  await pool.query(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS device_token TEXT;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS logs (
       id SERIAL PRIMARY KEY,
@@ -82,7 +88,12 @@ async function seedStaffIfEmpty() {
       [s.staffId, s.name, s.role]
     );
   }
-  console.log(`Seeded ${seed.length} staff records.`);
+  console.log(`Seeded ${seed.length} staff records. Remember: each still needs a PIN set from /admin before they can sign in.`);
+}
+
+function randomPin() {
+  // 4-digit numeric PIN, e.g. "0427". Zero-padded so it's always 4 digits.
+  return String(crypto.randomInt(0, 10000)).padStart(4, '0');
 }
 
 const DEFAULT_SETTINGS = {
@@ -113,4 +124,4 @@ async function init() {
   await seedSettingsIfMissing();
 }
 
-module.exports = { pool, init, DEFAULT_SETTINGS };
+module.exports = { pool, init, DEFAULT_SETTINGS, randomPin };
