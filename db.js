@@ -6,7 +6,6 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -40,12 +39,6 @@ async function initSchema() {
       staff_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       role TEXT NOT NULL,
-      credential_id TEXT,
-      user_handle TEXT,
-      enroll_code TEXT,
-      enroll_code_expires TIMESTAMPTZ,
-      enroll_token TEXT,
-      enroll_token_expires TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
@@ -74,11 +67,6 @@ async function initSchema() {
   `);
 }
 
-function randomCode() {
-  // 6-digit numeric code, e.g. "042817"
-  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-}
-
 async function seedStaffIfEmpty() {
   const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM staff');
   if (rows[0].n > 0) return;
@@ -87,13 +75,11 @@ async function seedStaffIfEmpty() {
   if (!fs.existsSync(seedPath)) return;
   const seed = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
 
-  const expires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 90); // 90 days
   for (const s of seed) {
     await pool.query(
-      `INSERT INTO staff (staff_id, name, role, enroll_code, enroll_code_expires)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO staff (staff_id, name, role) VALUES ($1, $2, $3)
        ON CONFLICT (staff_id) DO NOTHING`,
-      [s.staffId, s.name, s.role, randomCode(), expires]
+      [s.staffId, s.name, s.role]
     );
   }
   console.log(`Seeded ${seed.length} staff records.`);
@@ -127,4 +113,4 @@ async function init() {
   await seedSettingsIfMissing();
 }
 
-module.exports = { pool, init, randomCode, DEFAULT_SETTINGS };
+module.exports = { pool, init, DEFAULT_SETTINGS };

@@ -47,11 +47,8 @@ let state = {
   settings: { ...DEFAULT_SETTINGS },
   staff: [],
   geo: { status: 'checking', lat: null, lng: null, distance: null },
-  pendingAction: null,     // 'in' | 'out'
-  pendingStaff: null,
   watchId: null,
-  adminToken: sessionStorage.getItem('cac_admin_token') || null,
-  selfEnroll: { staffId: null, name: null, role: null, enrollToken: null }
+  adminToken: sessionStorage.getItem('cac_admin_token') || null
 };
 
 /* ---------------------- Utility ---------------------- */
@@ -59,19 +56,15 @@ let state = {
 function $(sel) { return document.querySelector(sel); }
 function $all(sel) { return Array.from(document.querySelectorAll(sel)); }
 
-let enrollTargetStaff = null; // reserved (unused in the API-backed flow, kept for clarity)
-
 // Delegated, defensive modal-close handling — attached immediately so a
 // Cancel/backdrop tap or Escape keypress always closes the Add Staff
 // modal even if something later in this file throws.
 function closeEnrollModal() {
   const modal = document.getElementById('modalEnroll');
   if (modal) modal.hidden = true;
-  $('#addStaffForm').hidden = false;
-  $('#addStaffCodePanel').hidden = true;
 }
 document.addEventListener('click', (e) => {
-  if (e.target.closest('#btnEnrollCancel') || e.target.closest('#btnAddStaffDone')) { closeEnrollModal(); return; }
+  if (e.target.closest('#btnEnrollCancel')) { closeEnrollModal(); return; }
   if (e.target.id === 'modalEnroll') { closeEnrollModal(); }
 });
 document.addEventListener('keydown', (e) => {
@@ -103,21 +96,6 @@ function escapeHtml(str) {
   const d = document.createElement('div');
   d.textContent = str;
   return d.innerHTML;
-}
-
-function bufToB64(buf) {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  bytes.forEach(b => bin += String.fromCharCode(b));
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-function b64ToBuf(b64) {
-  const norm = b64.replace(/-/g, '+').replace(/_/g, '/');
-  const pad = norm.length % 4 === 0 ? '' : '='.repeat(4 - (norm.length % 4));
-  const bin = atob(norm + pad);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes.buffer;
 }
 
 /* ---------------------- Polygon geofence ---------------------- */
@@ -174,9 +152,7 @@ function setGeoUI(status, text) {
   const pill = $('#geoStatus');
   pill.className = 'geo-pill geo-' + status;
   $('#geoStatusText').textContent = text;
-  const ready = status === 'inside';
-  $('#btnSignIn').disabled = !ready;
-  $('#btnSignOut').disabled = !ready;
+  updateSignButtons();
 }
 
 /* ---------------------- Live boundary map (Leaflet, no API key) ---------------------- */
@@ -286,149 +262,64 @@ function tickClock() {
   $('#clockDate').textContent = fmtDateLong(now);
 }
 
-/* ---------------------- Staff picker (Sign In / Out) ---------------------- */
+/* ---------------------- Staff select + direct sign in/out ---------------------- */
 
 async function loadStaffList() {
   state.staff = await api('/api/staff');
+  populateStaffSelect();
 }
 
-function renderStaffPicker(filter = '') {
-  const list = $('#staffList');
-  const q = filter.trim().toLowerCase();
-  const items = state.staff.filter(s =>
-    !q || s.name.toLowerCase().includes(q) || s.staffId.toLowerCase().includes(q)
-  ).sort((a, b) => a.name.localeCompare(b.name));
-
-  list.innerHTML = '';
-  $('#pickerEmpty').hidden = items.length !== 0;
-
-  items.forEach(s => {
-    const row = document.createElement('button');
-    row.className = 'staff-row';
-    row.innerHTML = `
-      <span class="staff-avatar">${initials(s.name)}</span>
-      <span class="staff-row-text">
-        <span class="staff-row-name">${escapeHtml(s.name)}</span>
-        <span class="staff-row-id">${escapeHtml(s.staffId)} · ${escapeHtml(s.role)}${!s.hasCredential ? ' · fingerprint not set up' : ''}</span>
-      </span>`;
-    row.addEventListener('click', () => {
-      if (!s.hasCredential) {
-        toast(`${s.name.split(' ')[0]} hasn't registered a fingerprint/face yet. Use "Register your fingerprint" on the home screen with your Staff ID and admin code.`, 4500);
-        return;
-      }
-      openVerify(s);
-    });
-    list.appendChild(row);
-  });
+function populateStaffSelect() {
+  const select = $('#staffSelect');
+  const current = select.value;
+  const sorted = [...state.staff].sort((a, b) => a.name.localeCompare(b.name));
+  select.innerHTML = '<option value="">Select your name…</option>' +
+    sorted.map(s => `<option value="${escapeHtml(s.staffId)}">${escapeHtml(s.name)}</option>`).join('');
+  if (sorted.some(s => s.staffId === current)) select.value = current;
+  updateSignButtons();
 }
 
-$('#btnSignIn').addEventListener('click', async () => {
-  state.pendingAction = 'in';
-  $('#pickerTitle').textContent = 'Sign In';
-  await refreshPicker();
-});
-$('#btnSignOut').addEventListener('click', async () => {
-  state.pendingAction = 'out';
-  $('#pickerTitle').textContent = 'Sign Out';
-  await refreshPicker();
-});
-async function refreshPicker() {
-  try {
-    await loadStaffList();
-  } catch (err) {
-    toast('Could not load staff list — check your connection.');
-  }
-  renderStaffPicker('');
-  $('#staffSearch').value = '';
-  showScreen('picker');
-}
-$('#staffSearch').addEventListener('input', (e) => renderStaffPicker(e.target.value));
-
-/* ---------------------- Verify (WebAuthn) — sign in/out ---------------------- */
-
-function openVerify(staffMember) {
-  state.pendingStaff = staffMember;
-  $('#verifyAvatar').textContent = initials(staffMember.name);
-  $('#verifyName').textContent = staffMember.name;
-  $('#verifyRole').textContent = `${staffMember.staffId} · ${staffMember.role}`;
-  $('#verifyHint').textContent = 'Tap below and use your fingerprint or face to confirm it\u2019s you.';
-  $('#fpIcon').parentElement.className = 'fp-ring';
-  $('#btnVerify').disabled = false;
-  $('#btnVerify').textContent = 'Use Fingerprint / Face';
-  showScreen('verify');
+function updateSignButtons() {
+  const hasStaff = !!$('#staffSelect').value;
+  const inFence = state.geo.status === 'inside';
+  $('#btnSignIn').disabled = !(hasStaff && inFence);
+  $('#btnSignOut').disabled = !(hasStaff && inFence);
 }
 
-$('#btnVerify').addEventListener('click', async () => {
-  const staffMember = state.pendingStaff;
-  if (!staffMember) return;
-
-  if (state.geo.status !== 'inside') {
-    toast('You have left the school perimeter — move back inside to continue.');
-    showScreen('home');
-    return;
-  }
-
-  const ring = $('#fpIcon').parentElement;
-  ring.className = 'fp-ring busy';
-  $('#btnVerify').disabled = true;
-  $('#btnVerify').textContent = 'Waiting for fingerprint / face…';
-
-  try {
-    if (!('credentials' in navigator) || !window.PublicKeyCredential) {
-      throw new Error('unsupported');
-    }
-    const cred = await api(`/api/staff/${encodeURIComponent(staffMember.staffId)}/credential`);
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const assertion = await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        timeout: 60000,
-        userVerification: 'required',
-        allowCredentials: [{
-          id: b64ToBuf(cred.credentialId),
-          type: 'public-key',
-          transports: ['internal']
-        }]
-      }
-    });
-    if (!assertion) throw new Error('cancelled');
-
-    ring.className = 'fp-ring ok';
-    await recordAttendance(staffMember, state.pendingAction);
-  } catch (err) {
-    ring.className = 'fp-ring fail';
-    $('#btnVerify').disabled = false;
-    $('#btnVerify').textContent = 'Try Again';
-    if (err && err.message === 'unsupported') {
-      $('#verifyHint').textContent = 'This device/browser does not support fingerprint or face verification. Try a recent phone browser (Chrome/Safari) with a fingerprint or face sensor enabled.';
-    } else if (err && err.status === 404) {
-      $('#verifyHint').textContent = 'No fingerprint/face is registered for this staff ID on any device yet.';
-    } else {
-      $('#verifyHint').textContent = 'That didn\u2019t match, or was cancelled. Please try again with your registered fingerprint or face.';
-    }
-  }
+$('#staffSelect').addEventListener('change', (e) => {
+  const s = state.staff.find(x => x.staffId === e.target.value);
+  $('#staffIdDisplay').value = s ? s.staffId : '';
+  updateSignButtons();
 });
 
-/* ---------------------- Attendance recording ---------------------- */
+$('#btnSignIn').addEventListener('click', () => attemptSignAction('in'));
+$('#btnSignOut').addEventListener('click', () => attemptSignAction('out'));
 
-async function recordAttendance(staffMember, type) {
+async function attemptSignAction(type) {
+  const staffId = $('#staffSelect').value;
+  const staffMember = state.staff.find(s => s.staffId === staffId);
+  if (!staffMember) { toast('Please select your name first.'); return; }
+  if (state.geo.status !== 'inside') { toast('You need to be inside the school perimeter to sign in or out.'); return; }
+
+  $('#btnSignIn').disabled = true;
+  $('#btnSignOut').disabled = true;
   try {
     const record = await api('/api/attendance', {
       method: 'POST',
       body: JSON.stringify({ staffId: staffMember.staffId, type, lat: state.geo.lat, lng: state.geo.lng })
     });
     showResult(record);
+    $('#staffSelect').value = '';
+    $('#staffIdDisplay').value = '';
   } catch (err) {
     if (err.status === 403) {
       toast(err.message);
-      showScreen('home');
       startGeoWatch();
     } else {
-      $('#verifyHint').textContent = err.message || 'Could not record attendance — check your connection and try again.';
-      $('#fpIcon').parentElement.className = 'fp-ring fail';
-      $('#btnVerify').disabled = false;
-      $('#btnVerify').textContent = 'Try Again';
+      toast(err.message || 'Could not record attendance — check your connection and try again.');
     }
+  } finally {
+    updateSignButtons();
   }
 }
 
@@ -487,90 +378,6 @@ function buildLogRow(r) {
 $('#btnTodayLog').addEventListener('click', async () => {
   showScreen('todaylog');
   await renderTodayLog();
-});
-
-/* ---------------------- Self-enrollment (staff, own phone) ---------------------- */
-
-$('#btnGoSelfEnroll').addEventListener('click', () => {
-  $('#selfEnrollId').value = '';
-  $('#selfEnrollCode').value = '';
-  $('#selfEnrollError').hidden = true;
-  $('#selfEnrollStep1').hidden = false;
-  $('#selfEnrollStep2').hidden = true;
-  showScreen('selfenroll');
-});
-
-$('#btnSelfEnrollVerify').addEventListener('click', async () => {
-  const staffId = $('#selfEnrollId').value.trim();
-  const code = $('#selfEnrollCode').value.trim();
-  const errEl = $('#selfEnrollError');
-  errEl.hidden = true;
-  if (!staffId || code.length < 4) {
-    errEl.textContent = 'Enter your Staff ID and the code your admin gave you.';
-    errEl.hidden = false;
-    return;
-  }
-  try {
-    const res = await api(`/api/staff/${encodeURIComponent(staffId)}/self-enroll/start`, {
-      method: 'POST',
-      body: JSON.stringify({ code })
-    });
-    state.selfEnroll = { staffId, name: res.name, role: res.role, enrollToken: res.enrollToken };
-    $('#selfEnrollAvatar').textContent = initials(res.name);
-    $('#selfEnrollName').textContent = res.name;
-    $('#selfEnrollHint').textContent = 'Tap below and use your fingerprint or face.';
-    $('#selfEnrollStep1').hidden = true;
-    $('#selfEnrollStep2').hidden = false;
-  } catch (err) {
-    errEl.textContent = err.message || 'Could not verify code.';
-    errEl.hidden = false;
-  }
-});
-
-$('#btnSelfEnrollFingerprint').addEventListener('click', async () => {
-  const { staffId, name, role, enrollToken } = state.selfEnroll;
-  if (!staffId || !enrollToken) return;
-  const btn = $('#btnSelfEnrollFingerprint');
-  btn.disabled = true;
-  btn.textContent = 'Waiting for fingerprint / face…';
-
-  try {
-    if (!window.PublicKeyCredential) throw new Error('unsupported');
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    const userId = crypto.getRandomValues(new Uint8Array(16));
-    const cred = await navigator.credentials.create({
-      publicKey: {
-        challenge,
-        rp: { name: state.settings.schoolName, id: location.hostname },
-        user: { id: userId, name: staffId, displayName: name },
-        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
-        authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
-        timeout: 60000,
-        attestation: 'none'
-      }
-    });
-    if (!cred) throw new Error('cancelled');
-
-    await api(`/api/staff/${encodeURIComponent(staffId)}/credential`, {
-      method: 'POST',
-      body: JSON.stringify({
-        credentialId: bufToB64(cred.rawId),
-        userHandle: bufToB64(userId),
-        enrollToken
-      })
-    });
-
-    toast(`You're all set, ${name.split(' ')[0]} — you can sign in below whenever you're on-site.`, 4200);
-    showScreen('home');
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = 'Try Again';
-    if (err && err.message === 'unsupported') {
-      $('#selfEnrollHint').textContent = 'This device/browser does not support fingerprint or face registration.';
-    } else {
-      $('#selfEnrollHint').textContent = err.message || 'That didn\u2019t work, or was cancelled. Please try again.';
-    }
-  }
 });
 
 /* ---------------------- Admin PIN gate ---------------------- */
@@ -728,42 +535,13 @@ async function renderStaffTab() {
   [...list].sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
     const row = document.createElement('div');
     row.className = 'staff-admin-row';
-    const codeActive = s.enrollCode && s.enrollCodeExpires && new Date(s.enrollCodeExpires) > new Date();
     row.innerHTML = `
       <span class="staff-avatar">${initials(s.name)}</span>
       <span class="staff-row-text">
         <span class="staff-row-name">${escapeHtml(s.name)}</span>
         <span class="staff-row-id">${escapeHtml(s.staffId)} · ${escapeHtml(s.role)}</span>
-        ${!s.hasCredential ? '<span class="enroll-needed-badge">Needs fingerprint enrollment</span>' : ''}
-        ${codeActive ? `<div class="staff-code-row">Code: <span class="staff-code-value">${escapeHtml(s.enrollCode)}</span></div>` : ''}
       </span>
-      <span class="staff-row-actions">
-        ${!s.hasCredential ? `<button class="mini-btn regen-code-btn" data-id="${escapeHtml(s.staffId)}">${codeActive ? 'New Code' : 'Get Code'}</button>` : `<button class="mini-btn reset-device-btn" data-id="${escapeHtml(s.staffId)}">Reset Device</button>`}
-        <button class="remove-staff-btn" data-id="${escapeHtml(s.staffId)}">Remove</button>
-      </span>`;
-
-    const regenBtn = row.querySelector('.regen-code-btn');
-    if (regenBtn) regenBtn.addEventListener('click', async () => {
-      try {
-        await api(`/api/admin/staff/${encodeURIComponent(s.staffId)}/regenerate-code`, { method: 'POST' });
-        toast('New code generated.');
-        renderStaffTab();
-      } catch (err) {
-        if (!handleAdminAuthError(err)) toast('Could not generate a code.');
-      }
-    });
-
-    const resetBtn = row.querySelector('.reset-device-btn');
-    if (resetBtn) resetBtn.addEventListener('click', async () => {
-      if (!confirm(`Reset ${s.name}'s registered device? They'll need to self-enroll again with a new code (use this if their phone was lost or replaced).`)) return;
-      try {
-        await api(`/api/admin/staff/${encodeURIComponent(s.staffId)}/reset-device`, { method: 'POST' });
-        toast('Device reset — a new code has been generated.');
-        renderStaffTab();
-      } catch (err) {
-        if (!handleAdminAuthError(err)) toast('Could not reset device.');
-      }
-    });
+      <button class="remove-staff-btn" data-id="${escapeHtml(s.staffId)}">Remove</button>`;
 
     row.querySelector('.remove-staff-btn').addEventListener('click', async () => {
       if (!confirm(`Remove ${s.name} from the staff list? Their past attendance records will be kept.`)) return;
@@ -772,6 +550,7 @@ async function renderStaffTab() {
         toast('Staff removed.');
         renderStaffTab();
         renderRecordsTab();
+        loadStaffList();
       } catch (err) {
         if (!handleAdminAuthError(err)) toast('Could not remove staff member.');
       }
@@ -786,8 +565,6 @@ function openEnrollModal() {
   $('#enrollId').value = '';
   $('#enrollRole').value = 'Teaching Staff';
   $('#enrollError').hidden = true;
-  $('#addStaffForm').hidden = false;
-  $('#addStaffCodePanel').hidden = true;
   $('#modalEnrollTitle').textContent = 'Add Staff';
   $('#modalEnroll').hidden = false;
 }
@@ -807,14 +584,14 @@ $('#btnEnrollFingerprint').addEventListener('click', async () => {
     return;
   }
   try {
-    const res = await api('/api/admin/staff', {
+    await api('/api/admin/staff', {
       method: 'POST',
       body: JSON.stringify({ staffId, name, role })
     });
-    $('#addStaffForm').hidden = true;
-    $('#addStaffCodePanel').hidden = false;
-    $('#addStaffCodeValue').textContent = res.enrollCode;
+    toast(`${name} added.`);
+    closeEnrollModal();
     await renderStaffTab();
+    await loadStaffList();
   } catch (err) {
     if (handleAdminAuthError(err)) return;
     errEl.textContent = err.message || 'Could not add staff member.';
@@ -908,8 +685,8 @@ async function init() {
     toast('Could not reach the server — check your connection.');
   }
   try {
-    state.staff = await api('/api/staff');
-  } catch (_) { /* picker will show empty and retry on open */ }
+    await loadStaffList();
+  } catch (_) { toast('Could not load staff list — check your connection.'); }
 
   $('.topbar-school').textContent = state.settings.schoolName.toUpperCase();
 
@@ -924,6 +701,12 @@ async function init() {
   initFenceMap();
   startGeoWatch();
   showScreen('home');
+
+  // Refresh the staff list when the tab/app regains focus, so a name added
+  // by the admin on another phone shows up without needing a full reload.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') loadStaffList().catch(() => {});
+  });
 }
 
 init();

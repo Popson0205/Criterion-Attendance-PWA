@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Criterion Amazing College — Attendance</title>
 <meta name="theme-color" content="#0B3D24">
-<meta name="description" content="Geofenced fingerprint sign in / sign out for Criterion Amazing College staff.">
+<meta name="description" content="Geofenced sign in / sign out for Criterion Amazing College staff.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -47,6 +47,14 @@
     <div id="fenceMap" class="fence-map"></div>
     <p class="map-note">Green boundary = school perimeter fence · your position updates live.</p>
 
+    <div class="settings-group">
+      <label class="settings-label">Who are you?</label>
+      <select id="staffSelect">
+        <option value="">Select your name…</option>
+      </select>
+      <input id="staffIdDisplay" type="text" readonly placeholder="Staff ID" style="margin-top:8px;">
+    </div>
+
     <div class="action-row">
       <button id="btnSignIn" class="action-btn action-in" disabled>
         <span class="action-icon">→</span>
@@ -59,64 +67,6 @@
     </div>
 
     <button id="btnTodayLog" class="link-btn">View today's sign-ins</button>
-    <button id="btnGoSelfEnroll" class="link-btn subtle">New here or new phone? Register your fingerprint</button>
-  </section>
-
-  <!-- ===== STAFF PICKER ===== -->
-  <section id="screen-picker" class="screen">
-    <div class="screen-header">
-      <button class="back-btn" data-back="home">‹</button>
-      <h2 id="pickerTitle">Sign In</h2>
-    </div>
-    <div class="search-wrap">
-      <input id="staffSearch" type="text" placeholder="Type your name or staff ID" autocomplete="off">
-    </div>
-    <div id="staffList" class="staff-list"></div>
-    <p id="pickerEmpty" class="empty-note" hidden>No staff match that search.</p>
-  </section>
-
-  <!-- ===== SELF ENROLLMENT (staff register their own fingerprint on their own phone) ===== -->
-  <section id="screen-selfenroll" class="screen">
-    <div class="screen-header">
-      <button class="back-btn" data-back="home">‹</button>
-      <h2>Register Your Fingerprint</h2>
-    </div>
-    <div class="pin-card" id="selfEnrollStep1">
-      <p class="pin-label">Enter your Staff ID and the one-time code the admin gave you</p>
-      <input id="selfEnrollId" type="text" placeholder="e.g. CAC-014" autocomplete="off" style="margin-bottom:10px;">
-      <input id="selfEnrollCode" type="text" inputmode="numeric" maxlength="6" placeholder="6-digit code" class="pin-input" autocomplete="off">
-      <p id="selfEnrollError" class="pin-error" hidden></p>
-      <button id="btnSelfEnrollVerify" class="primary-btn">Verify Code</button>
-      <p class="enroll-note">Don't have a code, or lost your phone? Ask the school admin — they can share or reset it from the Staff tab.</p>
-    </div>
-    <div class="verify-card" id="selfEnrollStep2" hidden>
-      <div id="selfEnrollAvatar" class="verify-avatar">A</div>
-      <h2 id="selfEnrollName">Staff Name</h2>
-      <p class="verify-role">Code verified — now register your fingerprint or face on this phone.</p>
-      <div class="fp-ring"><div class="fp-icon">
-        <svg viewBox="0 0 24 24" width="56" height="56"><path fill="currentColor" d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 5.82 1.47.25.13.34.43.21.68-.09.18-.26.28-.44.28M3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.98 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4.01-1.36.7-2.5 1.7-3.4 2.96-.11.14-.26.21-.42.21m6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.64 1.15 1.08 1.64 1.85 2.42.19.2.19.51 0 .71-.1.1-.23.15-.36.15m7.17-1.85c-1.19 0-2.24-.3-3.1-.89-1.49-1.01-2.38-2.65-2.38-4.39 0-.28.22-.5.5-.5s.5.22.5.5c0 1.41.72 2.74 1.94 3.56.71.48 1.54.71 2.54.71.24 0 .64-.03 1.04-.1.27-.05.53.13.58.41.05.27-.13.53-.41.58-.57.11-1.07.12-1.21.12M14.91 22c-.04 0-.09 0-.13-.02-1.4-.39-2.31-.9-3.27-1.85-1.24-1.23-1.92-2.87-1.92-4.61 0-1.5 1.29-2.72 2.87-2.72s2.87 1.22 2.87 2.72c0 .93.85 1.68 1.87 1.68 1.03 0 1.87-.75 1.87-1.68 0-3.55-3.06-6.44-6.82-6.44-2.68 0-5.14 1.49-6.27 3.79-.38.77-.57 1.66-.57 2.65 0 .73.06 1.89.61 3.39.1.26-.04.55-.3.65-.26.1-.55-.04-.65-.3-.5-1.36-.66-2.51-.66-3.74 0-1.15.22-2.19.66-3.09 1.29-2.62 4.06-4.31 7.08-4.31 4.32 0 7.82 3.34 7.82 7.44 0 1.48-1.29 2.68-2.87 2.68-1.58 0-2.87-1.2-2.87-2.68 0-.95-.85-1.72-1.87-1.72s-1.87.77-1.87 1.72c0 1.48.58 2.87 1.63 3.92.82.81 1.6 1.26 2.8 1.6.27.08.42.36.35.62-.06.22-.26.36-.47.36"/></svg>
-      </div></div>
-      <p id="selfEnrollHint" class="verify-hint">Tap below and use your fingerprint or face.</p>
-      <button id="btnSelfEnrollFingerprint" class="verify-btn">Register Fingerprint / Face</button>
-      <button class="back-btn ghost" data-back="home">Cancel</button>
-    </div>
-  </section>
-
-  <!-- ===== VERIFY (WEBAUTHN) SCREEN ===== -->
-  <section id="screen-verify" class="screen">
-    <div class="verify-card">
-      <div id="verifyAvatar" class="verify-avatar">A</div>
-      <h2 id="verifyName">Staff Name</h2>
-      <p id="verifyRole" class="verify-role">Staff ID</p>
-      <div class="fp-ring">
-        <div class="fp-icon" id="fpIcon">
-          <svg viewBox="0 0 24 24" width="56" height="56"><path fill="currentColor" d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 5.82 1.47.25.13.34.43.21.68-.09.18-.26.28-.44.28M3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.98 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4.01-1.36.7-2.5 1.7-3.4 2.96-.11.14-.26.21-.42.21m6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.64 1.15 1.08 1.64 1.85 2.42.19.2.19.51 0 .71-.1.1-.23.15-.36.15m7.17-1.85c-1.19 0-2.24-.3-3.1-.89-1.49-1.01-2.38-2.65-2.38-4.39 0-.28.22-.5.5-.5s.5.22.5.5c0 1.41.72 2.74 1.94 3.56.71.48 1.54.71 2.54.71.24 0 .64-.03 1.04-.1.27-.05.53.13.58.41.05.27-.13.53-.41.58-.57.11-1.07.12-1.21.12M14.91 22c-.04 0-.09 0-.13-.02-1.4-.39-2.31-.9-3.27-1.85-1.24-1.23-1.92-2.87-1.92-4.61 0-1.5 1.29-2.72 2.87-2.72s2.87 1.22 2.87 2.72c0 .93.85 1.68 1.87 1.68 1.03 0 1.87-.75 1.87-1.68 0-3.55-3.06-6.44-6.82-6.44-2.68 0-5.14 1.49-6.27 3.79-.38.77-.57 1.66-.57 2.65 0 .73.06 1.89.61 3.39.1.26-.04.55-.3.65-.26.1-.55-.04-.65-.3-.5-1.36-.66-2.51-.66-3.74 0-1.15.22-2.19.66-3.09 1.29-2.62 4.06-4.31 7.08-4.31 4.32 0 7.82 3.34 7.82 7.44 0 1.48-1.29 2.68-2.87 2.68-1.58 0-2.87-1.2-2.87-2.68 0-.95-.85-1.72-1.87-1.72s-1.87.77-1.87 1.72c0 1.48.58 2.87 1.63 3.92.82.81 1.6 1.26 2.8 1.6.27.08.42.36.35.62-.06.22-.26.36-.47.36"/></svg>
-        </div>
-      </div>
-      <p id="verifyHint" class="verify-hint">Tap below and use your fingerprint or face to confirm it's you.</p>
-      <button id="btnVerify" class="verify-btn">Use Fingerprint / Face</button>
-      <button class="back-btn ghost" data-back="picker">Cancel</button>
-    </div>
   </section>
 
   <!-- ===== RESULT SCREEN ===== -->
@@ -173,7 +123,7 @@
       <div class="filter-row">
         <input type="date" id="recordDate">
         <select id="recordStaffFilter"><option value="">All staff</option></select>
-        <button id="btnExportCsv" class="mini-btn">Export CSV</button>
+        <button id="btnExportCsv" class="mini-btn">⬇ Download Attendance (CSV)</button>
       </div>
       <div id="recordsSummary" class="records-summary"></div>
       <div id="recordsList" class="log-list"></div>
@@ -183,7 +133,6 @@
     <!-- Staff tab -->
     <div id="tab-staff" class="admin-tab-panel">
       <button id="btnAddStaff" class="primary-btn small">+ Add Staff</button>
-      <p class="geofence-note">Each person registers their own fingerprint on their own phone using their Staff ID and a one-time code — share the code shown here with them.</p>
       <div id="staffAdminList" class="staff-admin-list"></div>
     </div>
 
@@ -226,28 +175,20 @@
   <div id="modalEnroll" class="modal" hidden>
     <div class="modal-card">
       <h3 id="modalEnrollTitle">Add Staff</h3>
-      <div id="addStaffForm">
-        <label class="settings-label">Full name</label>
-        <input id="enrollName" type="text" placeholder="e.g. Mrs. Adebayo Folake">
-        <label class="settings-label">Staff ID</label>
-        <input id="enrollId" type="text" placeholder="e.g. CAC-019">
-        <label class="settings-label">Role</label>
-        <select id="enrollRole">
-          <option>Teaching Staff</option>
-          <option>Non-Teaching Staff</option>
-          <option>Administrator</option>
-        </select>
-        <p id="enrollError" class="pin-error" hidden></p>
-        <div class="modal-actions">
-          <button id="btnEnrollCancel" class="ghost-btn">Cancel</button>
-          <button id="btnEnrollFingerprint" class="primary-btn">Add Staff</button>
-        </div>
-      </div>
-      <div id="addStaffCodePanel" hidden>
-        <p class="pin-label">Added! Share this one-time code with them:</p>
-        <p id="addStaffCodeValue" class="geofence-current" style="font-size:22px;font-weight:800;text-align:center;letter-spacing:2px;"></p>
-        <p class="enroll-note">They'll enter their Staff ID and this code under "Register your fingerprint" on their own phone.</p>
-        <button id="btnAddStaffDone" class="primary-btn">Done</button>
+      <label class="settings-label">Full name</label>
+      <input id="enrollName" type="text" placeholder="e.g. Mrs. Adebayo Folake">
+      <label class="settings-label">Staff ID</label>
+      <input id="enrollId" type="text" placeholder="e.g. CAC-019">
+      <label class="settings-label">Role</label>
+      <select id="enrollRole">
+        <option>Teaching Staff</option>
+        <option>Non-Teaching Staff</option>
+        <option>Administrator</option>
+      </select>
+      <p id="enrollError" class="pin-error" hidden></p>
+      <div class="modal-actions">
+        <button id="btnEnrollCancel" class="ghost-btn">Cancel</button>
+        <button id="btnEnrollFingerprint" class="primary-btn">Add Staff</button>
       </div>
     </div>
   </div>
