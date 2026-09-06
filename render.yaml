@@ -1,7 +1,10 @@
 services:
   - type: web
     name: criterion-attendance
-    runtime: static
-    staticPublishPath: .
-    buildCommand: ""
-    pullRequestPreviewsEnabled: false
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # paste your Neon connection string in the Render dashboard

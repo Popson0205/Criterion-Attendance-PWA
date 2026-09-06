@@ -1,160 +1,148 @@
-# Criterion Amazing College — Attendance PWA
+# Criterion Amazing College — Attendance PWA (multi-device edition)
 
-A geofenced, fingerprint-verified sign in / sign out app for staff, branded for
-Criterion Amazing College, Osogbo.
-
-## How it's meant to be used
-
-This is a **kiosk app**: install it on one shared device (a tablet or phone)
-mounted at the school entrance/gate. Each staff member enrolls their own
-fingerprint or face on that device once; from then on they walk up, pick
-their name, and confirm with their fingerprint. It is **not** meant to be
-installed on each teacher's personal phone, because:
-
-- Fingerprint/face data never leaves the device — that's exactly what makes
-  it trustworthy, but it also means a credential registered on one phone
-  won't work on another.
-- A shared kiosk gives you one clean, tamper-resistant record of everyone's
-  actual arrival time in one place.
-
-If you'd eventually like staff to sign in from their own personal phones,
-that needs a small backend server (see "Scaling beyond one device" below).
+A geofenced, fingerprint/face-verified sign in/out system. Every teacher can
+now use **their own phone** — everyone reads and writes the same shared
+attendance record via a small backend, instead of one shared kiosk device.
 
 ## What it does
 
 - **Geofencing on the real perimeter fence** — sign in/out are disabled
   unless the device's GPS places you inside the school's actual surveyed
-  boundary (loaded from `Criterion_perimeter_fence.kml`), not just a rough
-  circle. A small adjustable buffer (default 25m) absorbs normal GPS drift
-  near the fence line.
-- **"You can now sign in/out" alert** — the moment a staff member's device
-  crosses into the perimeter, the app shows an on-screen alert (and a
-  browser notification/vibration if permitted). Outside the fence, the
-  Sign In / Sign Out buttons stay disabled — there's no way to sign in or
-  out from off-site.
-- **Biometric verification** — uses the device's built-in fingerprint/Face ID
-  sensor via the WebAuthn standard, scoped per staff member, so someone can't
-  sign in on another person's behalf without physically having their
-  registered finger/face present on the device.
-- **Staff list pre-loaded** — the 2026/2027 working team from `Staff_List.docx`
-  is built into the app, so the roster is already there on first load. Each
-  person still needs to register their own fingerprint/face once on the
-  kiosk device (biometric data can't be pre-loaded — it has to be captured
-  live from that person). The Staff tab flags anyone who hasn't done this
-  yet with a "Needs fingerprint enrollment" badge and an **Enroll** button.
-- **Late/early flagging** — set a resumption time and closing time; the app
-  automatically tags each sign-in as "late" or sign-out as "early."
-- **Admin dashboard** (PIN-protected) — enroll/remove staff, complete
-  fingerprint enrollment for pre-loaded staff, browse and filter attendance
-  records by date/staff, export to CSV, and configure the fence buffer,
-  resumption/closing times, and admin PIN.
-- **Installable PWA** — add to home screen, works full-screen, caches its
-  shell for quick loads.
+  boundary (loaded from `Criterion_perimeter_fence.kml`). A small adjustable
+  buffer (default 25m) absorbs normal GPS drift. This is checked **twice**:
+  instantly on the phone for UI feedback, and again on the server for every
+  submitted sign-in/out — the server check is the one that actually counts,
+  since phones aren't school-controlled hardware anymore.
+- **"You can now sign in/out" alert** — the moment a phone's location
+  crosses into the perimeter, the app shows an on-screen alert (plus a
+  notification/vibration if permitted).
+- **Biometric verification, per person's own phone** — each teacher
+  registers their own fingerprint/Face ID once, on their own device, via
+  WebAuthn. That credential only ever works on that device (the private key
+  never leaves it) — nobody else can sign someone in using their name.
+- **Secure self-enrollment** — since there's no single kiosk an admin
+  controls anymore, a teacher can't just pick anyone's name and register a
+  fingerprint against it. Each staff member gets a one-time 6-digit code
+  from the admin; they enter their Staff ID + that code on their own phone
+  once, which unlocks the fingerprint/face registration step. The code is
+  single-use and expires after 90 days if unused.
+- **Shared, centralized records** — staff list, settings, and every
+  attendance log now live in one Postgres database on Render, so the admin
+  dashboard (from any device) sees everyone's sign-ins together, not just
+  whoever's phone you're holding.
+- **Late/early flagging**, **admin dashboard** (PIN-protected, staff/records/
+  settings), **CSV export**, **installable PWA** — same as before.
 
-## Setting it up
-
-1. **Host the files** (see "Deploying to Render" below, or any static host).
-   WebAuthn (fingerprint/face) and precise geolocation both require a real
-   secure origin — either `https://` or `localhost`. Render, GitHub Pages,
-   Netlify, and Vercel all give you `https://` automatically.
-2. **Open it on the kiosk device** and add it to the home screen
-   (Chrome: menu → "Add to Home screen"; Safari: Share → "Add to Home Screen")
-   so it opens full-screen like a native app.
-3. **Check the perimeter fence.** Tap the gear icon (top right) — first
-   time, it will ask you to set an admin PIN (pick anything 4–8 digits, and
-   remember it). Go to Settings → the fence boundary is already loaded from
-   the survey; tap **"Test this device against the fence"** while standing
-   at different points around the compound to confirm it reads correctly,
-   and nudge the GPS tolerance buffer up a little if it's too strict right
-   at the gate.
-4. **Set resumption/closing time** in the same Settings tab so late/early
-   flags are accurate.
-5. **Complete staff fingerprint enrollment.** Go to the Staff tab — everyone
-   from the working team list is already there. For each person, tap
-   **Enroll** next to their name and have them register their own
-   fingerprint/face right there on the device. Use **"+ Enroll New Staff"**
-   only for someone who isn't on the list yet.
-6. Staff can now use **Sign In / Sign Out** from the home screen — the
-   buttons unlock automatically as soon as they're inside the fence.
-
-## Deploying to Render
-
-This app is fully static (no backend, no build step) — Render's free
-**Static Site** service is enough.
-
-**Option A — Blueprint (one click):**
-1. Push this `attendance-pwa` folder to a GitHub/GitLab repo (it can be the
-   whole repo root, or a subfolder — see note below).
-2. In Render, click **New → Blueprint**, point it at the repo. Render will
-   read `render.yaml` and create the static site automatically.
-3. If `attendance-pwa` is a *subfolder* of your repo rather than the repo
-   root, edit the generated service's **Publish Directory** to
-   `attendance-pwa` (the `render.yaml` included here assumes it's already
-   the repo root).
-
-**Option B — Manual:**
-1. In Render, click **New → Static Site** and connect your repo.
-2. **Build Command:** leave blank (or `echo "no build"`).
-3. **Publish Directory:** `.` if this folder is the repo root, or
-   `attendance-pwa` if it's nested.
-4. Deploy. Render gives you a `https://your-app.onrender.com` URL — open
-   that on the kiosk device and add it to the home screen.
-
-Because everything is stored locally on the kiosk device (IndexedDB), the
-Render site is just serving static files — there's nothing to configure
-server-side, and no database to provision.
-
-## Data and privacy
-
-- All data (staff list, attendance logs, settings) is stored locally on the
-  kiosk device using IndexedDB — nothing is sent to any server, including
-  Anthropic's. Fingerprint/face data itself never leaves the device's secure
-  hardware at all — the app only ever receives a cryptographic yes/no signal
-  from WebAuthn, never the actual biometric.
-- Because it's local to the device, **back up the device** and avoid
-  clearing browser data/site storage for the app, or attendance history will
-  be lost. For anything beyond a single kiosk, move to the backend version
-  below, which is safer for records you can't afford to lose.
-
-## Known limitations
-
-- **One device = one source of truth.** If you want multiple entrances or
-  staff signing in from personal phones, this version's local storage won't
-  sync between devices.
-- **WebAuthn support varies by device.** Most phones from the last ~5 years
-  (Android with fingerprint/face unlock, iPhones with Face ID/Touch ID) work
-  well in Chrome/Safari. Very old or budget devices without a biometric
-  sensor won't support it — the app will tell staff clearly if that's the
-  case rather than failing silently.
-- **GPS accuracy indoors** can drift by 10–30m depending on the device and
-  building. Test the fence with a couple of real staff members near the
-  boundary before rolling it out, and raise the buffer a little rather than
-  leaving it razor-thin.
-- **The fence shape is fixed in code.** It's baked in from
-  `Criterion_perimeter_fence.kml` as a set of coordinates in `app.js`
-  (`SCHOOL_PERIMETER`). If the school's boundary ever changes (new gate,
-  extended land), that constant needs updating with a new KML/coordinate
-  export — there's no in-app map editor for it yet.
-
-## Scaling beyond one device
-
-If the school later wants: multiple entry points, staff signing in from
-their own phones, or an admin dashboard viewable from the office without
-touching the kiosk — that requires a small backend (e.g. a database +
-API) so all devices read/write the same records instead of local storage.
-The screens, geofencing logic, and WebAuthn flow in this app carry over
-directly; only the storage layer would change. Happy to help build that
-phase whenever you're ready.
-
-## Files
+## Architecture
 
 ```
-attendance-pwa/
-├── index.html      screens & markup
-├── styles.css       school-branded styling
-├── app.js           all logic: IndexedDB, geofencing, WebAuthn, UI
-├── manifest.json     PWA install config
-├── sw.js             offline shell caching
-├── icons/            app icons generated from the school crest
-└── README.md
+Teacher's phone  ──┐
+Teacher's phone  ──┼──►  Render Web Service (Express, server.js)  ──►  Render Postgres
+Admin's device   ──┘         serves public/ (the PWA) + REST API
 ```
+
+- `public/` — the frontend (same PWA, now calling the API instead of local
+  IndexedDB).
+- `server.js` — Express app: serves the frontend and the `/api/*` routes.
+- `db.js` — Postgres connection, schema creation, first-run seeding.
+- `geofence.js` — the perimeter-fence math, run server-side as the
+  authoritative check.
+- `seed-staff.json` — the initial staff roster (from `Staff_List.docx`).
+
+Nothing is stored in the browser anymore except a temporary admin login
+token (cleared when the tab/app is closed) — if a phone is lost, there's no
+attendance data sitting on it.
+
+## Deploying to Render + Neon
+
+This needs a **Web Service** on Render plus a **Postgres database on Neon**
+(neon.tech — free tier, and unlike Render's own free Postgres, Neon's free
+tier doesn't expire after 90 days).
+
+**1. Create the Neon database:**
+1. Sign up at [neon.tech](https://neon.tech), create a new project.
+2. On the project dashboard, copy the **connection string** (it looks like
+   `postgresql://user:password@ep-xxxx.aws.neon.tech/neondb?sslmode=require`).
+
+**2. Deploy the web service on Render:**
+
+*Option A — Blueprint:*
+1. Push this folder to a GitHub/GitLab repo.
+2. In Render: **New → Blueprint**, point it at the repo. It reads
+   `render.yaml` and creates the web service, prompting you to paste in
+   `DATABASE_URL` (your Neon connection string) during setup.
+
+*Option B — Manual:*
+1. **New → Web Service**, connect this repo.
+   - **Build Command:** `npm install`
+   - **Start Command:** `node server.js`
+   - **Environment → Add Environment Variable:** `DATABASE_URL` = your Neon
+     connection string (paste it exactly, including `?sslmode=require`).
+2. Deploy.
+
+The server auto-detects Neon's connection string and enables SSL for you —
+no extra config needed. Open the resulting `https://your-app.onrender.com`
+URL once it's live.
+
+> Why Neon instead of Render's own Postgres: Render's free Postgres tier
+> expires after 90 days and needs recreating; Neon's free tier doesn't have
+> that limit (it does have its own limits — storage cap and auto-suspend
+> after inactivity — worth checking Neon's current free-tier terms if this
+> becomes a long-term production deployment).
+
+## First-time setup
+
+1. **Open the URL on any phone**, add it to the home screen (Chrome: menu →
+   "Add to Home screen"; Safari: Share → "Add to Home Screen").
+2. **Set the admin PIN.** Tap the gear icon (top right) — the *first*
+   PIN anyone enters becomes the admin PIN from then on. Do this yourself
+   first, before handing the link to anyone else.
+3. **Check the perimeter fence.** In Settings, the fence is already loaded
+   from the survey. Walk around the compound with **"Test this device
+   against the fence"** and nudge the GPS buffer if needed.
+4. **Set resumption/closing time** in the same tab.
+5. **Get everyone enrolled:**
+   - The 18 names from `Staff_List.docx` are already seeded, each with a
+     one-time enrollment code sitting in the Staff tab, waiting to be
+     shared.
+   - Go to the **Staff tab**, tap **"Get Code"** next to each person, and
+     share their Staff ID + code with them (WhatsApp, printed slip,
+     whatever's easiest).
+   - Each teacher opens the app link on **their own phone**, taps
+     **"New here or new phone? Register your fingerprint"** on the home
+     screen, enters their Staff ID + code, then registers their own
+     fingerprint/face right there.
+   - Use **"+ Add Staff"** for anyone not on the original list.
+6. Staff can now **Sign In / Sign Out** from their own phone, any time
+   they're on-site.
+
+## If someone gets a new phone, or loses one
+
+Go to Staff tab → **"Reset Device"** next to their name. This clears their
+old fingerprint registration and issues a fresh code — they self-enroll
+again on the new device, exactly like the first time.
+
+## Known limitations (worth knowing before you rely on this)
+
+- **The WebAuthn ceremony isn't cryptographically re-verified by the
+  server.** The server trusts that if a phone's browser reports "the
+  fingerprint/face matched," it's genuine (this matches how the original
+  single-kiosk version worked too). A stronger version of this would have
+  the server independently verify the cryptographic signature on every
+  sign-in (a "relying party" implementation) — a real hardening step worth
+  doing before this is used for anything with legal or payroll
+  consequences, but a materially bigger build than what's here now. Happy
+  to add it if that matters for your use case.
+- **The fence shape is fixed in code** (`SCHOOL_PERIMETER` in both
+  `public/app.js` and `geofence.js`) — baked in from the KML survey. If the
+  school's boundary changes, both copies need updating with new
+  coordinates; there's no in-app map editor.
+- **GPS accuracy indoors** can drift 10–30m. Test with real staff near the
+  boundary before relying on a tight buffer.
+- **Free Render Postgres expires after 90 days** — not applicable now that
+  you're using Neon, which doesn't have that specific limit (check Neon's
+  current free-tier terms for its own limits — storage cap, auto-suspend
+  after inactivity).
+- **Admin sessions are in-memory** — if the server restarts (free-tier
+  services also spin down after inactivity), the admin just re-enters the
+  PIN; nothing else is affected.

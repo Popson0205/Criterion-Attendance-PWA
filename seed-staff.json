@@ -1,0 +1,20 @@
+[
+  { "staffId": "CAC-001", "name": "Ibraheem K. Abiola", "role": "Coordinator, Senior Secondary School" },
+  { "staffId": "CAC-002", "name": "Salahudeen Olawumi Mariam", "role": "Coordinator, Junior Secondary School" },
+  { "staffId": "CAC-003", "name": "Babalola Saidat A.", "role": "Coordinator, Nursery and Primary School" },
+  { "staffId": "CAC-004", "name": "Bolaji Sadiat Kikelomo", "role": "Teaching Staff" },
+  { "staffId": "CAC-005", "name": "Yusuf Ganiyu Laja", "role": "Teaching Staff" },
+  { "staffId": "CAC-006", "name": "Ibraheem Lukman Ademola", "role": "Teaching Staff" },
+  { "staffId": "CAC-007", "name": "Mallam Adedokun Misbahudeen", "role": "Teaching Staff" },
+  { "staffId": "CAC-008", "name": "Olawale Dolapo Narmat", "role": "Teaching Staff" },
+  { "staffId": "CAC-009", "name": "Egbetokun Tawakalit", "role": "Teaching Staff" },
+  { "staffId": "CAC-010", "name": "Adebayo Aliu Alade", "role": "Non-Teaching Staff" },
+  { "staffId": "CAC-011", "name": "Jeyelaye Bolanle", "role": "Non-Teaching Staff" },
+  { "staffId": "CAC-012", "name": "Amsat Balqees Olaitan", "role": "Teaching Staff" },
+  { "staffId": "CAC-013", "name": "AbdulQudus Ayomide Abdulkareem", "role": "Non-Teaching Staff" },
+  { "staffId": "CAC-014", "name": "Hassan Sofiyat", "role": "Non-Teaching Staff" },
+  { "staffId": "CAC-015", "name": "Mrs Olatunji", "role": "Care Giver" },
+  { "staffId": "CAC-016", "name": "Popoola Idris Bamigboye", "role": "Teaching Staff" },
+  { "staffId": "CAC-017", "name": "Adebayo Ilyas Akinola", "role": "Teaching Staff" },
+  { "staffId": "CAC-018", "name": "Adebayo Rasheed Olawale", "role": "Head of Administration" }
+]
