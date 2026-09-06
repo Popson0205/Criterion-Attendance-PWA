@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Criterion Amazing College — Admin</title>
+<meta name="theme-color" content="#0B3D24">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <img src="icons/icon-192.png" alt="" class="topbar-crest">
+    <div class="topbar-text">
+      <span class="topbar-school">CRITERION AMAZING COLLEGE</span>
+      <span class="topbar-sub">Admin Dashboard</span>
+    </div>
+    <a href="/" class="topbar-admin" aria-label="Back to staff app" style="text-decoration:none;display:flex;align-items:center;justify-content:center;">⌂</a>
+  </header>
+
+  <!-- ===== ADMIN PIN GATE ===== -->
+  <section id="screen-pin" class="screen active">
+    <div class="pin-card" style="margin-top:40px;">
+      <p class="pin-label">Enter admin PIN</p>
+      <input id="pinInput" type="password" inputmode="numeric" maxlength="8" class="pin-input" autocomplete="off">
+      <p id="pinError" class="pin-error" hidden>Incorrect PIN. Try again.</p>
+      <button id="btnPinGo" class="primary-btn">Continue</button>
+      <p class="pin-first-run-note" id="pinFirstRunNote" hidden>First time here — set a new admin PIN.</p>
+    </div>
+  </section>
+
+  <!-- ===== ADMIN DASHBOARD ===== -->
+  <section id="screen-admin" class="screen">
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="records">Records</button>
+      <button class="admin-tab" data-tab="staff">Staff</button>
+      <button class="admin-tab" data-tab="settings">Settings</button>
+    </div>
+
+    <!-- Records tab -->
+    <div id="tab-records" class="admin-tab-panel active">
+      <div class="filter-row">
+        <input type="date" id="recordDate">
+        <select id="recordStaffFilter"><option value="">All staff</option></select>
+        <button id="btnExportCsv" class="mini-btn">⬇ Download Attendance (CSV)</button>
+      </div>
+      <div id="recordsSummary" class="records-summary"></div>
+      <div id="recordsList" class="log-list"></div>
+      <p id="recordsEmpty" class="empty-note" hidden>No records for this filter.</p>
+    </div>
+
+    <!-- Staff tab -->
+    <div id="tab-staff" class="admin-tab-panel">
+      <button id="btnAddStaff" class="primary-btn small">+ Add Staff</button>
+      <div id="staffAdminList" class="staff-admin-list"></div>
+    </div>
+
+    <!-- Settings tab -->
+    <div id="tab-settings" class="admin-tab-panel">
+      <div class="settings-group">
+        <label class="settings-label">School name</label>
+        <input id="setSchoolName" type="text">
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">Resumption time (sign-ins after this are marked late)</label>
+        <input id="setResumeTime" type="time">
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">Closing time (sign-outs before this are marked early)</label>
+        <input id="setCloseTime" type="time">
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">School perimeter (geofence)</label>
+        <div class="geofence-box">
+          <p id="geofenceCurrent" class="geofence-current">Loading…</p>
+          <p class="geofence-note">This is the surveyed property boundary (from the perimeter fence file), not a simple radius — staff must be inside the actual fence line to sign in or out.</p>
+          <label class="settings-label small">GPS tolerance buffer: <span id="bufferVal">25</span> m</label>
+          <input id="setBuffer" type="range" min="0" max="60" step="5" value="25">
+          <p class="geofence-note">Absorbs normal GPS drift near the fence line. Increase it a little if staff right at the gate get rejected; keep it low to stay strict.</p>
+          <button id="btnTestGeofence" class="mini-btn">📍 Test this device against the fence</button>
+          <p id="geofenceTestResult" class="geofence-current"></p>
+        </div>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">Change admin PIN</label>
+        <input id="setNewPin" type="password" inputmode="numeric" maxlength="8" placeholder="New PIN (4–8 digits)">
+      </div>
+      <button id="btnSaveSettings" class="primary-btn">Save Settings</button>
+      <p id="settingsSaved" class="settings-saved" hidden>Settings saved.</p>
+    </div>
+  </section>
+
+  <!-- ===== ADD STAFF MODAL ===== -->
+  <div id="modalEnroll" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="modalEnrollTitle">Add Staff</h3>
+      <label class="settings-label">Full name</label>
+      <input id="enrollName" type="text" placeholder="e.g. Mrs. Adebayo Folake">
+      <label class="settings-label">Staff ID</label>
+      <input id="enrollId" type="text" placeholder="e.g. CAC-019">
+      <label class="settings-label">Role</label>
+      <select id="enrollRole">
+        <option>Teaching Staff</option>
+        <option>Non-Teaching Staff</option>
+        <option>Administrator</option>
+      </select>
+      <p id="enrollError" class="pin-error" hidden></p>
+      <div class="modal-actions">
+        <button id="btnEnrollCancel" class="ghost-btn">Cancel</button>
+        <button id="btnEnrollFingerprint" class="primary-btn">Add Staff</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <div id="toast" class="toast" hidden></div>
+
+</div>
+
+<script src="common.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

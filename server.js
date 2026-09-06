@@ -275,6 +275,12 @@ app.get('/api/admin/logs', requireAdmin, async (req, res) => {
 
 /* ---------------------- Static frontend ---------------------- */
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Separate admin page — not part of the staff-facing SPA at all.
+app.get(['/admin', '/admin/'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

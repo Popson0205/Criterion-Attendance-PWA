@@ -6,26 +6,29 @@ backend, instead of one shared kiosk device.
 
 ## What it does
 
+- **Two separate pages, cleanly split:**
+  - `/` — the staff-facing app. Clock, live boundary map, name dropdown,
+    Sign In/Sign Out. **No admin UI of any kind lives here** — no gear
+    icon, no hidden PIN screen, nothing.
+  - `/admin` — a completely separate page: PIN login, then Records (view/
+    filter/download CSV), Staff (add/remove), Settings (school name,
+    times, geofence buffer, change PIN).
 - **Geofencing on the real perimeter fence** — sign in/out are disabled
   unless the device's GPS places you inside the school's actual surveyed
   boundary (loaded from `Criterion_perimeter_fence.kml`). A small adjustable
-  buffer (default 25m) absorbs normal GPS drift. This is checked **twice**:
-  instantly on the phone for UI feedback, and again on the server for every
-  submitted sign-in/out — the server check is the one that actually counts.
+  buffer (default 25m) absorbs normal GPS drift. Checked both instantly on
+  the phone (for UI feedback) and again on the server for every submitted
+  sign-in/out — the server check is the one that actually counts.
 - **Live boundary map** — the home screen shows an embedded map (Leaflet +
   OpenStreetMap, no API key needed) with the fence outlined in green and a
-  dot for your current position, so you can see exactly where you stand
-  relative to the line before signing in or out. The dot turns green/red
-  depending on whether you're inside.
-- **Simple sign-in** — a teacher picks their name from a dropdown (their
-  Staff ID fills in automatically), then taps Sign In or Sign Out. No
-  fingerprint step, no per-device setup — the geofence is what gates it.
+  dot for your current position, updating live, colored by inside/outside.
+- **Simple sign-in** — pick your name from a dropdown (Staff ID fills in
+  automatically), tap Sign In or Sign Out. No fingerprint step.
 - **Shared, centralized records** — staff list, settings, and every
-  attendance log live in one Postgres database (Neon), so the admin
-  dashboard sees everyone's sign-ins together, from any device.
-- **Late/early flagging**, **admin dashboard** (PIN-protected: Records /
-  Staff / Settings), **CSV download of the full attendance list**,
-  **add/remove staff from the dashboard**, **installable PWA**.
+  attendance log live in one Postgres database (Neon), so `/admin` sees
+  everyone's sign-ins together, from any device.
+- **Late/early flagging**, **CSV download of the full attendance list**,
+  **add/remove staff from `/admin`**, **installable PWA** (staff side only).
 
 > **Trade-off worth knowing:** dropping the fingerprint step means sign-in
 > relies entirely on "this phone is inside the fence" rather than "this is
@@ -33,26 +36,34 @@ backend, instead of one shared kiosk device.
 > access to the app could pick someone else's name from the dropdown. If
 > that risk matters for your use case (e.g. payroll depends on this data),
 > the fix is re-adding a lightweight per-person check — even just a short
-> PIN per staff member — and I can build that back in without bringing back
-> the fingerprint/enrollment-code complexity. Say the word if you want it.
+> PIN per staff member — without bringing back fingerprint/enrollment-code
+> complexity. Say the word if you want it.
 
 ## Architecture
 
 ```
-Teacher's phone  ──┐
-Teacher's phone  ──┼──►  Render Web Service (Express, server.js)  ──►  Neon Postgres
-Admin's device   ──┘         serves public/ (the PWA) + REST API
+Teacher's phone (/)      ──┐
+Admin's device (/admin)  ──┼──►  Render Web Service (Express, server.js)  ──►  Neon Postgres
 ```
 
-- `public/` — the frontend (dropdown sign-in, live map, admin dashboard).
-- `server.js` — Express app: serves the frontend and the `/api/*` routes.
+- `public/index.html` + `public/app.js` — staff-facing page. No admin code
+  at all in this bundle.
+- `public/admin.html` + `public/admin.js` — admin page. PIN-gated, entirely
+  separate script, only loaded when someone visits `/admin`.
+- `public/common.js` — small shared helpers (fetch wrapper, formatting,
+  screen switching) used by both pages.
+- `server.js` — Express app: serves both pages plus the `/api/*` routes,
+  and explicitly routes `/admin` to `admin.html`.
 - `db.js` — Postgres connection, schema creation, first-run seeding.
 - `geofence.js` — the perimeter-fence math, run server-side as the
   authoritative check.
 - `seed-staff.json` — the initial staff roster (from `Staff_List.docx`).
+- `public/sw.js` — the staff page's offline service worker. It explicitly
+  excludes `/api/*` and everything under `/admin` from caching, so admin
+  never sees a stale version and attendance data is always live.
 
 Nothing is stored in the browser except a temporary admin login token
-(cleared when the tab/app is closed).
+(cleared when the admin tab is closed).
 
 ## Deploying to Render + Neon
 
@@ -82,30 +93,39 @@ extra config needed. Open the resulting `https://your-app.onrender.com` URL.
 ## First-time setup
 
 1. **Open the URL on any phone**, add it to the home screen.
-2. **Set the admin PIN.** Tap the gear icon (top right) — the *first* PIN
-   anyone enters becomes the admin PIN. Do this yourself first.
-3. **Check the perimeter fence.** In Settings, the fence is already loaded
-   from the survey — the map on the home screen shows it too. Walk the
-   compound with **"Test this device against the fence"** and adjust the
-   GPS buffer if needed.
+2. **Set the admin PIN.** Go to `https://your-app.onrender.com/admin` — the
+   *first* PIN anyone enters there becomes the admin PIN. Do this yourself
+   first, and don't share the `/admin` link with staff.
+3. **Check the perimeter fence.** In `/admin` → Settings, the fence is
+   already loaded from the survey — the map on the staff home screen shows
+   it too. Walk the compound with **"Test this device against the fence"**
+   and adjust the GPS buffer if needed.
 4. **Set resumption/closing time** in the same tab.
 5. **Staff list is already seeded** from `Staff_List.docx`. Use **"+ Add
-   Staff"** in the Staff tab for anyone new — they'll appear in the
+   Staff"** in `/admin` → Staff tab for anyone new — they'll appear in the
    dropdown on every phone within a moment (or after they reopen the app).
-6. Anyone can now **open the link on their own phone**, pick their name,
-   and tap Sign In / Sign Out whenever they're inside the fence.
+6. Share the **main URL** (`/`, not `/admin`) with staff. They pick their
+   name and tap Sign In / Sign Out whenever they're inside the fence.
 
 ## Admin day-to-day
 
-- **Add a new staff member:** Admin → Staff tab → "+ Add Staff" → name,
-  Staff ID, role. They show up in the dropdown immediately.
+Go to `/admin`, enter the PIN.
+
+- **Add a new staff member:** Staff tab → "+ Add Staff" → name, Staff ID,
+  role. They show up in the dropdown immediately.
 - **Remove someone:** Staff tab → Remove next to their name (their past
   attendance records are kept).
-- **Download the attendance list:** Admin → Records tab → filter by date
-  and/or staff member → "⬇ Download Attendance (CSV)".
+- **View today's/any day's attendance:** Records tab, filter by date and/or
+  staff member.
+- **Download the attendance list:** Records tab → "⬇ Download Attendance
+  (CSV)".
 
 ## Known limitations (worth knowing before you rely on this)
 
+- **`/admin` isn't secret, only PIN-protected** — the URL itself has a
+  `noindex` tag so search engines won't list it, but anyone who guesses or
+  is told the URL can reach the PIN screen (they still need the correct
+  PIN to get past it). Don't treat the URL as a secret on its own.
 - **No per-person verification beyond the geofence** — see the trade-off
   note above. This is the main thing to weigh before treating this data as
   authoritative for pay or discipline.

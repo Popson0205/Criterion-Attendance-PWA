@@ -583,6 +583,7 @@ button, input, select {
   justify-content: center;
   z-index: 9999;
 }
+.modal[hidden] { display: none; }
 .modal-card {
   background: var(--cream-panel);
   width: 100%;

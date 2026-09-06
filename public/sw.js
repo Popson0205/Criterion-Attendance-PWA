@@ -1,8 +1,9 @@
-const CACHE = 'cac-attendance-v4';
+const CACHE = 'cac-attendance-v5';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
+  './common.js',
   './app.js',
   './manifest.json',
   './icons/icon-192.png',
@@ -27,10 +28,13 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
 
-  // Never cache API calls — this app's whole point is fresh, shared data
-  // across everyone's phone. Let these go straight to the network; if
-  // offline, they just fail naturally (the app already shows a toast).
-  if (url.pathname.startsWith('/api/')) {
+  // Never cache API calls or the admin page/script — admin needs to
+  // always be current, and doesn't need offline support anyway. This
+  // matters even though admin.html never registers the service worker
+  // itself: once it's registered from the staff page, it controls every
+  // path on this origin, /admin included.
+  const isAdminAsset = ['/admin', '/admin/', '/admin.html', '/admin.js'].includes(url.pathname);
+  if (url.pathname.startsWith('/api/') || isAdminAsset) {
     e.respondWith(fetch(e.request));
     return;
   }
