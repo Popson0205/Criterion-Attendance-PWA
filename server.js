@@ -170,20 +170,6 @@ function rowToLog(r) {
   };
 }
 
-// Public "today's sign-ins" board — matches the original app's un-gated view.
-app.get('/api/logs/today', async (req, res) => {
-  try {
-    const todayKey = dateKeyOf(new Date());
-    const { rows } = await pool.query(
-      'SELECT * FROM logs WHERE date_key = $1 ORDER BY ts DESC', [todayKey]
-    );
-    res.json(rows.map(rowToLog));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not load today\u2019s log.' });
-  }
-});
-
 /* ======================================================================
    ADMIN API — PIN-protected
 ====================================================================== */
@@ -310,10 +296,12 @@ app.delete('/api/admin/staff/:id', requireAdmin, async (req, res) => {
 
 app.get('/api/admin/logs', requireAdmin, async (req, res) => {
   try {
-    const { date, staffId } = req.query;
+    const { date, staffId, from, to } = req.query;
     const clauses = [];
     const params = [];
     if (date) { params.push(date); clauses.push(`date_key = $${params.length}`); }
+    if (from) { params.push(from); clauses.push(`date_key >= $${params.length}`); }
+    if (to) { params.push(to); clauses.push(`date_key <= $${params.length}`); }
     if (staffId) { params.push(staffId); clauses.push(`staff_id = $${params.length}`); }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const { rows } = await pool.query(`SELECT * FROM logs ${where} ORDER BY ts DESC`, params);

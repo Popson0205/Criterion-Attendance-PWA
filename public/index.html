@@ -22,13 +22,14 @@
 
 <div id="app">
 
-  <!-- ===== TOP BAR (no admin entry here — admin lives at /admin) ===== -->
+  <!-- ===== TOP BAR ===== -->
   <header class="topbar">
     <img src="icons/icon-192.png" alt="" class="topbar-crest">
     <div class="topbar-text">
       <span class="topbar-school">CRITERION AMAZING COLLEGE</span>
       <span class="topbar-sub">Osogbo · Staff Attendance</span>
     </div>
+    <a href="/admin" class="topbar-admin" aria-label="Admin" style="text-decoration:none;display:flex;align-items:center;justify-content:center;">⚙</a>
   </header>
 
   <!-- ===== HOME / CLOCK SCREEN ===== -->
@@ -65,8 +66,6 @@
         <span>Sign Out</span>
       </button>
     </div>
-
-    <button id="btnTodayLog" class="link-btn">View today's sign-ins</button>
   </section>
 
   <!-- ===== RESULT SCREEN ===== -->
@@ -79,16 +78,6 @@
       <div id="resultBadge" class="result-badge" hidden></div>
       <button class="primary-btn" data-back="home">Done</button>
     </div>
-  </section>
-
-  <!-- ===== TODAY LOG (read-only, no login) ===== -->
-  <section id="screen-todaylog" class="screen">
-    <div class="screen-header">
-      <button class="back-btn" data-back="home">‹</button>
-      <h2>Today's Sign-Ins</h2>
-    </div>
-    <div id="todayLogList" class="log-list"></div>
-    <p id="todayLogEmpty" class="empty-note" hidden>No sign-ins recorded yet today.</p>
   </section>
 
   <!-- toast -->

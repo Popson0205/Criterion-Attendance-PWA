@@ -129,6 +129,7 @@ async function submitPin() {
 function enterAdmin() {
   showScreen('admin');
   renderAdminAll();
+  startRecordsPolling();
 }
 
 /* ---------------------- Tabs ---------------------- */
@@ -139,6 +140,9 @@ $all('.admin-tab').forEach(tab => {
     $all('.admin-tab-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'analytics') refreshAnalytics();
+    if (tab.dataset.tab === 'staff') renderStaffTab();
+    if (tab.dataset.tab === 'records') refreshRecordsList();
   });
 });
 
@@ -146,6 +150,7 @@ async function renderAdminAll() {
   await renderRecordsTab();
   await renderStaffTab();
   await renderSettingsTab();
+  initAnalyticsDefaults();
 }
 
 function handleAdminAuthError(err) {
@@ -159,7 +164,13 @@ function handleAdminAuthError(err) {
   return false;
 }
 
-/* --- Records tab --- */
+/* --- Records tab: live attendance sheet --- */
+
+function statusTag(r) {
+  if (r.status === 'late') return '<span class="sheet-tag late">LATE</span>';
+  if (r.status === 'early') return '<span class="sheet-tag early">EARLY</span>';
+  return '<span class="sheet-tag ontime">ON TIME</span>';
+}
 
 async function renderRecordsTab() {
   const dateInput = $('#recordDate');
@@ -173,6 +184,9 @@ async function renderRecordsTab() {
 }
 
 async function refreshRecordsList() {
+  // Only bother hitting the network if the Records tab is actually visible.
+  if (!document.getElementById('tab-records').classList.contains('active')) return;
+
   const date = $('#recordDate').value;
   const staffId = $('#recordStaffFilter').value;
   let rows = [];
@@ -184,15 +198,31 @@ async function refreshRecordsList() {
   } catch (err) {
     if (handleAdminAuthError(err)) return;
     toast('Could not load records.');
+    return;
   }
 
   const lateCount = rows.filter(r => r.status === 'late').length;
   $('#recordsSummary').textContent = `${rows.length} record${rows.length === 1 ? '' : 's'} · ${lateCount} late arrival${lateCount === 1 ? '' : 's'}`;
 
-  const list = $('#recordsList');
-  list.innerHTML = '';
+  const body = $('#recordsTableBody');
+  body.innerHTML = '';
   $('#recordsEmpty').hidden = rows.length !== 0;
-  rows.forEach(r => list.appendChild(buildLogRow(r)));
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${fmtTime(new Date(r.timestamp))}</td>
+      <td>${escapeHtml(r.staffId)}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td><span class="sheet-tag ${r.type}">${r.type === 'in' ? 'IN' : 'OUT'}</span></td>
+      <td>${statusTag(r)}</td>`;
+    body.appendChild(tr);
+  });
+}
+
+let recordsPollTimer = null;
+function startRecordsPolling() {
+  if (recordsPollTimer) clearInterval(recordsPollTimer);
+  recordsPollTimer = setInterval(() => refreshRecordsList().catch(() => {}), 15000);
 }
 
 $('#recordDate').addEventListener('change', refreshRecordsList);
@@ -229,6 +259,129 @@ $('#btnExportCsv').addEventListener('click', async () => {
   a.download = `attendance_${date || 'all'}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+});
+
+/* --- Analytics tab: comparative dashboard + per-teacher score card --- */
+
+let analyticsLogs = []; // raw logs for the currently selected range, reused by the scorecard
+
+function firstOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function initAnalyticsDefaults() {
+  if (!$('#analyticsFrom').value) $('#analyticsFrom').value = dateKeyOf(firstOfMonth(new Date()));
+  if (!$('#analyticsTo').value) $('#analyticsTo').value = dateKeyOf(new Date());
+}
+
+$('#analyticsFrom').addEventListener('change', refreshAnalytics);
+$('#analyticsTo').addEventListener('change', refreshAnalytics);
+
+// Average time-of-day across a list of ISO timestamps, using each
+// timestamp's local (browser) time — consistent with how times are shown
+// everywhere else in the app.
+function averageTimeOfDay(isoTimestamps) {
+  if (!isoTimestamps.length) return null;
+  const totalMinutes = isoTimestamps.reduce((sum, iso) => {
+    const d = new Date(iso);
+    return sum + d.getHours() * 60 + d.getMinutes();
+  }, 0);
+  const avgMinutes = Math.round(totalMinutes / isoTimestamps.length);
+  const h = Math.floor(avgMinutes / 60) % 24;
+  const m = avgMinutes % 60;
+  const ref = new Date();
+  ref.setHours(h, m, 0, 0);
+  return fmtTime(ref);
+}
+
+function summarizeStaff(staffMember, logsForRange) {
+  const mine = logsForRange.filter(l => l.staffId === staffMember.staffId);
+  const ins = mine.filter(l => l.type === 'in');
+  const outs = mine.filter(l => l.type === 'out');
+  const daysIn = new Set(ins.map(l => l.dateKey)).size;
+  const onTime = ins.filter(l => l.status === 'ontime').length;
+  const late = ins.filter(l => l.status === 'late').length;
+  const early = outs.filter(l => l.status === 'early').length;
+  const avgResume = averageTimeOfDay(ins.map(l => l.timestamp));
+  return { staffMember, daysIn, onTime, late, early, avgResume, records: mine };
+}
+
+async function refreshAnalytics() {
+  initAnalyticsDefaults();
+  const from = $('#analyticsFrom').value;
+  const to = $('#analyticsTo').value;
+  try {
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    analyticsLogs = await adminApi(`/api/admin/logs?${qs.toString()}`);
+  } catch (err) {
+    if (handleAdminAuthError(err)) return;
+    toast('Could not load analytics.');
+    return;
+  }
+
+  const summaries = state.staff.map(s => summarizeStaff(s, analyticsLogs))
+    .sort((a, b) => a.staffMember.name.localeCompare(b.staffMember.name));
+
+  const body = $('#analyticsTableBody');
+  body.innerHTML = '';
+  $('#analyticsEmpty').hidden = summaries.length !== 0;
+
+  summaries.forEach(sum => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.innerHTML = `
+      <td>${escapeHtml(sum.staffMember.name)}</td>
+      <td>${sum.daysIn}</td>
+      <td>${sum.onTime}</td>
+      <td>${sum.late > 0 ? `<span class="sheet-tag late">${sum.late}</span>` : '0'}</td>
+      <td>${sum.avgResume || '—'}</td>`;
+    tr.addEventListener('click', () => openScorecard(sum));
+    body.appendChild(tr);
+  });
+}
+
+function openScorecard(sum) {
+  $('#scorecardName').textContent = sum.staffMember.name;
+  $('#scorecardMeta').textContent = `${sum.staffMember.staffId} · ${sum.staffMember.role}`;
+  $('#scDaysIn').textContent = sum.daysIn;
+  $('#scOnTime').textContent = sum.onTime;
+  $('#scLate').textContent = sum.late;
+  $('#scEarly').textContent = sum.early;
+  $('#scAvgResume').textContent = sum.avgResume || '—';
+
+  const recent = $('#scorecardRecent');
+  recent.innerHTML = '';
+  const sorted = [...sum.records].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 15);
+  if (!sorted.length) {
+    recent.innerHTML = '<p class="empty-note">No records in this range.</p>';
+  } else {
+    sorted.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.innerHTML = `
+        <span class="log-type-tag ${r.type}">${r.type === 'in' ? 'IN' : 'OUT'}</span>
+        <span class="log-row-text">
+          <span class="log-row-name">${r.dateKey}</span>
+        </span>
+        <span class="log-row-time">
+          <strong>${fmtTime(new Date(r.timestamp))}</strong>
+          ${r.status !== 'ontime' ? `<span>${r.status.toUpperCase()}</span>` : ''}
+        </span>`;
+      recent.appendChild(row);
+    });
+  }
+  $('#modalScorecard').hidden = false;
+}
+
+function closeScorecard() { $('#modalScorecard').hidden = true; }
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#btnScorecardClose')) { closeScorecard(); return; }
+  if (e.target.id === 'modalScorecard') { closeScorecard(); }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeScorecard();
 });
 
 /* --- Staff tab --- */

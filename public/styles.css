@@ -505,7 +505,68 @@ button, input, select {
   cursor: pointer;
   white-space: nowrap;
 }
-.records-summary { font-size: 12.5px; color: var(--ink-soft); }
+.records-summary { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 6px; }
+
+.sheet-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 50vh;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+.sheet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.sheet-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--green-deep);
+  color: #fff;
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.sheet-table tbody td {
+  padding: 8px 10px;
+  border-top: 1px solid var(--line);
+}
+.sheet-table tbody tr:nth-child(even) { background: #F6F3E6; }
+.sheet-table tbody tr.clickable { cursor: pointer; }
+.sheet-table tbody tr.clickable:hover { background: #EDE8D3; }
+.sheet-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sheet-tag.in { background: var(--ok-bg); color: var(--green-deep); }
+.sheet-tag.out { background: #F1EEDF; color: var(--ink-soft); }
+.sheet-tag.late { background: var(--danger-bg); color: var(--danger); }
+.sheet-tag.early { background: var(--danger-bg); color: var(--danger); }
+.sheet-tag.ontime { background: var(--ok-bg); color: var(--green-deep); }
+
+.scorecard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+.scorecard-stat {
+  background: #F6F3E6;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  text-align: center;
+}
+.scorecard-num { display: block; font-size: 26px; font-weight: 800; color: var(--green-deep); font-family: var(--font-head); }
+.scorecard-label { display: block; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
 
 .staff-admin-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
 .staff-admin-row {
@@ -588,6 +649,8 @@ button, input, select {
   background: var(--cream-panel);
   width: 100%;
   max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
   border-radius: 20px 20px 0 0;
   padding: 22px 20px calc(24px + var(--safe-bottom));
   display: flex;

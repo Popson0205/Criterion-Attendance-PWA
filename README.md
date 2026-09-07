@@ -8,11 +8,11 @@ backend, instead of one shared kiosk device.
 
 - **Two separate pages, cleanly split:**
   - `/` — the staff-facing app. Clock, live boundary map, name dropdown,
-    Sign In/Sign Out. **No admin UI of any kind lives here** — no gear
-    icon, no hidden PIN screen, nothing.
-  - `/admin` — a completely separate page: PIN login, then Records (view/
-    filter/download CSV), Staff (add/remove), Settings (school name,
-    times, geofence buffer, change PIN).
+    PIN, Sign In/Sign Out, and a small link to `/admin`. No PIN gate or
+    admin logic ships in this page's code at all.
+  - `/admin` — PIN login, then **Records** (live attendance sheet),
+    **Analytics** (comparative performance dashboard + per-teacher score
+    cards), **Staff** (add/remove, PINs), **Settings**.
 - **Geofencing on the real perimeter fence** — sign in/out are disabled
   unless the device's GPS places you inside the school's actual surveyed
   boundary (loaded from `Criterion_perimeter_fence.kml`). A small adjustable
@@ -32,9 +32,19 @@ backend, instead of one shared kiosk device.
 - **Shared, centralized records** — staff list, settings, and every
   attendance log live in one Postgres database (Neon), so `/admin` sees
   everyone's sign-ins together, from any device.
-- **Late/early flagging**, **CSV download of the full attendance list**,
-  **add/remove staff and reset PINs from `/admin`**, **installable PWA**
-  (staff side only).
+- **Live attendance sheet** — the Records tab in `/admin` is a real table
+  (Time, Staff ID, Name, Type, Status) that refreshes itself every 15
+  seconds while open, filterable by date and staff member. CSV download is
+  still there as a secondary option if you want a file for external use.
+- **Analytics dashboard + per-teacher score cards** — a comparative table
+  across all staff for any date range (days signed in, on-time count, late
+  count, average resumption time), so you can see patterns at a glance.
+  Tap any teacher's row to open their full score card: days present,
+  on-time arrivals, late arrivals, early departures, average resumption
+  time, and their recent individual records for that range — useful for
+  actual performance conversations, not just raw logs.
+- **Late/early flagging**, **add/remove staff and reset PINs from
+  `/admin`**, **installable PWA** (staff side only).
 
 ### How the PIN + device-binding actually works
 
@@ -133,20 +143,22 @@ extra config needed. Open the resulting `https://your-app.onrender.com` URL.
 
 ## Admin day-to-day
 
-Go to `/admin`, enter the PIN.
+Go to `/admin` (or tap the gear icon on the staff page), enter the PIN.
 
 - **Add a new staff member:** Staff tab → "+ Add Staff" → name, Staff ID,
   role → a PIN is generated and shown once — share it with them.
 - **Someone forgot their PIN or got a new phone:** Staff tab → "Reset PIN"
-  next to their name → share the new PIN with them. Their old device is
-  automatically un-bound; the next phone that uses the new PIN becomes the
-  new bound device.
+  next to their name → share the new PIN with them.
 - **Remove someone:** Staff tab → Remove next to their name (their past
   attendance records are kept).
-- **View today's/any day's attendance:** Records tab, filter by date and/or
-  staff member.
-- **Download the attendance list:** Records tab → "⬇ Download Attendance
-  (CSV)".
+- **Watch attendance live:** Records tab — updates automatically every 15
+  seconds, filter by date and/or staff member.
+- **See who's performing well / who's often late:** Analytics tab — pick a
+  date range, scan the comparative table, tap any name for their full
+  score card (days present, on-time/late/early counts, average resumption
+  time, recent individual records).
+- **Download a CSV** if you need a file for payroll/reporting: Records tab
+  → "⬇ CSV" (respects whatever date/staff filter is currently set).
 
 ## Known limitations (worth knowing before you rely on this)
 

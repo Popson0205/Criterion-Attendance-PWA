@@ -283,26 +283,6 @@ function showResult(record) {
   showScreen('result');
 }
 
-/* ---------------------- Today's log (public view) ---------------------- */
-
-async function renderTodayLog() {
-  const list = $('#todayLogList');
-  list.innerHTML = '';
-  try {
-    const rows = await api('/api/logs/today');
-    $('#todayLogEmpty').hidden = rows.length !== 0;
-    rows.forEach(r => list.appendChild(buildLogRow(r)));
-  } catch (err) {
-    $('#todayLogEmpty').hidden = false;
-    $('#todayLogEmpty').textContent = 'Could not load today\u2019s log — check your connection.';
-  }
-}
-
-$('#btnTodayLog').addEventListener('click', async () => {
-  showScreen('todaylog');
-  await renderTodayLog();
-});
-
 /* ---------------------- Service worker ---------------------- */
 
 if ('serviceWorker' in navigator) {

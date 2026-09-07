@@ -41,20 +41,48 @@
   <section id="screen-admin" class="screen">
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="records">Records</button>
+      <button class="admin-tab" data-tab="analytics">Analytics</button>
       <button class="admin-tab" data-tab="staff">Staff</button>
       <button class="admin-tab" data-tab="settings">Settings</button>
     </div>
 
-    <!-- Records tab -->
+    <!-- Records tab: live attendance sheet -->
     <div id="tab-records" class="admin-tab-panel active">
       <div class="filter-row">
         <input type="date" id="recordDate">
         <select id="recordStaffFilter"><option value="">All staff</option></select>
-        <button id="btnExportCsv" class="mini-btn">⬇ Download Attendance (CSV)</button>
+        <button id="btnExportCsv" class="mini-btn">⬇ CSV</button>
       </div>
       <div id="recordsSummary" class="records-summary"></div>
-      <div id="recordsList" class="log-list"></div>
+      <div class="sheet-wrap">
+        <table class="sheet-table">
+          <thead>
+            <tr><th>Time</th><th>Staff ID</th><th>Name</th><th>Type</th><th>Status</th></tr>
+          </thead>
+          <tbody id="recordsTableBody"></tbody>
+        </table>
+      </div>
       <p id="recordsEmpty" class="empty-note" hidden>No records for this filter.</p>
+      <p class="map-note">Updates automatically every 15 seconds.</p>
+    </div>
+
+    <!-- Analytics tab: comparative performance dashboard -->
+    <div id="tab-analytics" class="admin-tab-panel">
+      <div class="filter-row">
+        <input type="date" id="analyticsFrom">
+        <span style="align-self:center;color:var(--ink-soft);font-size:13px;">to</span>
+        <input type="date" id="analyticsTo">
+      </div>
+      <p class="geofence-note">Tap any teacher's row for their full score card.</p>
+      <div class="sheet-wrap">
+        <table class="sheet-table">
+          <thead>
+            <tr><th>Name</th><th>Days In</th><th>On-Time</th><th>Late</th><th>Avg. Resumption</th></tr>
+          </thead>
+          <tbody id="analyticsTableBody"></tbody>
+        </table>
+      </div>
+      <p id="analyticsEmpty" class="empty-note" hidden>No data for this range yet.</p>
     </div>
 
     <!-- Staff tab -->
@@ -124,6 +152,31 @@
         <p id="addStaffPinValue" class="geofence-current" style="font-size:26px;font-weight:800;text-align:center;letter-spacing:3px;"></p>
         <p class="enroll-note">Share this PIN with them now — it won't be shown again. They'll enter it (along with picking their name) the first time they sign in, which also locks their name to that phone.</p>
         <button id="btnAddStaffDone" class="primary-btn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TEACHER SCORE CARD MODAL ===== -->
+  <div id="modalScorecard" class="modal" hidden>
+    <div class="modal-card">
+      <h3 id="scorecardName">Name</h3>
+      <p id="scorecardMeta" class="geofence-note" style="margin-top:-8px;">Staff ID · Role</p>
+      <div class="scorecard-grid">
+        <div class="scorecard-stat"><span id="scDaysIn" class="scorecard-num">0</span><span class="scorecard-label">Days signed in</span></div>
+        <div class="scorecard-stat"><span id="scOnTime" class="scorecard-num">0</span><span class="scorecard-label">On-time arrivals</span></div>
+        <div class="scorecard-stat"><span id="scLate" class="scorecard-num">0</span><span class="scorecard-label">Late arrivals</span></div>
+        <div class="scorecard-stat"><span id="scEarly" class="scorecard-num">0</span><span class="scorecard-label">Early departures</span></div>
+      </div>
+      <div class="settings-group" style="margin-top:12px;">
+        <label class="settings-label">Average resumption time</label>
+        <p id="scAvgResume" class="geofence-current" style="font-size:20px;font-weight:800;">--:--</p>
+      </div>
+      <div class="settings-group">
+        <label class="settings-label">Recent sign-ins (this range)</label>
+        <div id="scorecardRecent" class="log-list" style="max-height:180px;overflow-y:auto;"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btnScorecardClose" class="primary-btn">Close</button>
       </div>
     </div>
   </div>

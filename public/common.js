@@ -59,20 +59,3 @@ function showScreen(id) {
 $all('[data-back]').forEach(btn => {
   btn.addEventListener('click', () => showScreen(btn.dataset.back));
 });
-
-function buildLogRow(r) {
-  const row = document.createElement('div');
-  row.className = 'log-row';
-  const flag = r.status === 'late' ? 'LATE' : r.status === 'early' ? 'EARLY' : '';
-  row.innerHTML = `
-    <span class="log-type-tag ${r.type}">${r.type === 'in' ? 'IN' : 'OUT'}</span>
-    <span class="log-row-text">
-      <span class="log-row-name">${escapeHtml(r.name)}</span>
-      <span class="log-row-meta">${escapeHtml(r.staffId)}</span>
-    </span>
-    <span class="log-row-time">
-      <strong>${fmtTime(new Date(r.timestamp))}</strong>
-      ${flag ? `<span>${flag}</span>` : ''}
-    </span>`;
-  return row;
-}
