@@ -320,7 +320,13 @@ app.get('/api/admin/logs', requireAdmin, async (req, res) => {
 });
 
 /* ---------------------- Static frontend ---------------------- */
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  // Make browsers re-check the page, scripts and styles on every load, so a
+  // new deployment reaches phones immediately instead of waiting on HTTP caching.
+  setHeaders: (res, filePath) => {
+    if (/\.(html|js|css|json)$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 // Separate admin page — not part of the staff-facing SPA at all.
 app.get(['/admin', '/admin/'], (req, res) => {

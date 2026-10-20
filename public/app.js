@@ -304,7 +304,15 @@ function showResult(record) {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // Installed PWAs can stay open for days — re-check for a new version
+        // every time the app comes back to the foreground.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      })
+      .catch(() => {});
   });
 }
 
