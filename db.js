@@ -63,7 +63,11 @@ async function initSchema() {
       distance_m INTEGER
     );
   `);
+  // Additive migration: which section (Primary / Secondary) the teacher signed in/out for.
+  // Older records stay NULL and show as "—" in the admin.
+  await pool.query(`ALTER TABLE logs ADD COLUMN IF NOT EXISTS section TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_logs_date ON logs(date_key);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_logs_section ON logs(section);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_logs_staff ON logs(staff_id);`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS settings (
@@ -124,4 +128,6 @@ async function init() {
   await seedSettingsIfMissing();
 }
 
-module.exports = { pool, init, DEFAULT_SETTINGS, randomPin };
+const SECTIONS = ['Primary', 'Secondary'];
+
+module.exports = { pool, init, DEFAULT_SETTINGS, randomPin, SECTIONS };

@@ -54,6 +54,11 @@
       </select>
       <input id="staffIdDisplay" type="text" readonly placeholder="Staff ID" style="margin-top:8px;">
       <input id="staffPin" type="password" inputmode="numeric" maxlength="4" placeholder="Your 4-digit PIN" style="margin-top:8px;">
+      <label class="settings-label" style="display:block;margin-top:12px;">Which section are you signing for?</label>
+      <div class="section-toggle" id="sectionToggle" role="radiogroup" aria-label="Section">
+        <button type="button" class="section-btn" data-section="Primary" role="radio" aria-checked="false">Primary</button>
+        <button type="button" class="section-btn" data-section="Secondary" role="radio" aria-checked="false">Secondary</button>
+      </div>
     </div>
 
     <div class="action-row">

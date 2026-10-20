@@ -50,14 +50,26 @@
     <div id="tab-records" class="admin-tab-panel active">
       <div class="filter-row">
         <input type="date" id="recordDate">
+        <select id="recordSectionFilter">
+          <option value="">All sections</option>
+          <option value="Primary">Primary</option>
+          <option value="Secondary">Secondary</option>
+          <option value="none">No section (old records)</option>
+        </select>
         <select id="recordStaffFilter"><option value="">All staff</option></select>
         <button id="btnExportCsv" class="mini-btn">⬇ CSV</button>
+        <button id="btnPrint" class="mini-btn">🖨 Print</button>
+      </div>
+      <div id="printHeader" class="print-header" hidden>
+        <h2 id="printSchool"></h2>
+        <p id="printTitle"></p>
+        <p id="printMeta"></p>
       </div>
       <div id="recordsSummary" class="records-summary"></div>
       <div class="sheet-wrap">
         <table class="sheet-table">
           <thead>
-            <tr><th>Time</th><th>Staff ID</th><th>Name</th><th>Type</th><th>Status</th></tr>
+            <tr><th>Time</th><th>Staff ID</th><th>Name</th><th>Section</th><th>Type</th><th>Status</th></tr>
           </thead>
           <tbody id="recordsTableBody"></tbody>
         </table>

@@ -692,3 +692,42 @@ button, input, select {
   .clock-time { font-size: 46px; }
   .action-btn { padding: 20px 8px; font-size: 15px; }
 }
+
+/* ---------- Section picker (staff sign-in screen) ---------- */
+.section-toggle { display: flex; gap: 8px; margin-top: 6px; }
+.section-btn {
+  flex: 1;
+  padding: 12px 8px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--cream-panel);
+  color: var(--ink-soft);
+  font: 600 14.5px var(--font-body);
+  cursor: pointer;
+}
+.section-btn.selected {
+  background: var(--green-deep);
+  border-color: var(--green-deep);
+  color: #fff;
+}
+
+/* ---------- Print (admin attendance list) ---------- */
+.print-header { text-align: center; margin: 8px 0 12px; }
+.print-header[hidden] { display: none; }
+.print-header h2 { margin: 0; font-family: var(--font-head); font-size: 20px; }
+.print-header p { margin: 3px 0 0; font-size: 12.5px; color: var(--ink-soft); }
+.print-header #printTitle { font-weight: 700; color: var(--ink); font-size: 15px; }
+
+@media print {
+  body { background: #fff !important; }
+  #app { max-width: none !important; }
+  .topbar, .admin-tabs, .filter-row, .map-note, .toast, .modal,
+  #screen-pin, #tab-analytics, #tab-staff, #tab-settings { display: none !important; }
+  #screen-admin, #tab-records { display: block !important; padding: 0 !important; }
+  .sheet-wrap { max-height: none !important; overflow: visible !important; border: none !important; box-shadow: none !important; }
+  .sheet-table { width: 100%; font-size: 11.5px; }
+  .sheet-table thead { display: table-header-group; }
+  .sheet-table tr { page-break-inside: avoid; }
+  .sheet-table tbody tr:nth-child(even) { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .records-summary { color: #000; }
+}

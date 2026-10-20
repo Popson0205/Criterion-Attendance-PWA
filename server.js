@@ -8,7 +8,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const path = require('path');
-const { pool, init, DEFAULT_SETTINGS, randomPin } = require('./db');
+const { pool, init, DEFAULT_SETTINGS, randomPin, SECTIONS } = require('./db');
 const { evaluatePerimeter } = require('./geofence');
 
 const app = express();
@@ -106,9 +106,12 @@ app.get('/api/staff', async (req, res) => {
 // perimeter fence and the resumption/closing time too.
 app.post('/api/attendance', async (req, res) => {
   try {
-    const { staffId, type, lat, lng, pin, deviceId } = req.body || {};
+    const { staffId, type, lat, lng, pin, deviceId, section } = req.body || {};
     if (!staffId || (type !== 'in' && type !== 'out') || typeof lat !== 'number' || typeof lng !== 'number') {
       return res.status(400).json({ error: 'Missing or invalid sign-in data.' });
+    }
+    if (!SECTIONS.includes(section)) {
+      return res.status(400).json({ error: 'Please select a section (Primary or Secondary).' });
     }
     if (!pin || !deviceId) {
       return res.status(400).json({ error: 'PIN and device information are required.' });
@@ -151,9 +154,9 @@ app.post('/api/attendance', async (req, res) => {
       : (timeStrOf(now) < closeTime ? 'early' : 'ontime');
 
     const insert = await pool.query(
-      `INSERT INTO logs (staff_id, name, role, type, ts, date_key, status, lat, lng, distance_m)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [staffMember.staff_id, staffMember.name, staffMember.role, type, now, dateKeyOf(now), status, lat, lng, Math.round(distance)]
+      `INSERT INTO logs (staff_id, name, role, type, ts, date_key, status, lat, lng, distance_m, section)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [staffMember.staff_id, staffMember.name, staffMember.role, type, now, dateKeyOf(now), status, lat, lng, Math.round(distance), section]
     );
     res.json(rowToLog(insert.rows[0]));
   } catch (err) {
@@ -166,7 +169,7 @@ function rowToLog(r) {
   return {
     id: r.id, staffId: r.staff_id, name: r.name, role: r.role, type: r.type,
     timestamp: r.ts, dateKey: r.date_key, status: r.status,
-    lat: r.lat, lng: r.lng, distance: r.distance_m
+    lat: r.lat, lng: r.lng, distance: r.distance_m, section: r.section
   };
 }
 
@@ -296,13 +299,17 @@ app.delete('/api/admin/staff/:id', requireAdmin, async (req, res) => {
 
 app.get('/api/admin/logs', requireAdmin, async (req, res) => {
   try {
-    const { date, staffId, from, to } = req.query;
+    const { date, staffId, from, to, section } = req.query;
     const clauses = [];
     const params = [];
     if (date) { params.push(date); clauses.push(`date_key = $${params.length}`); }
     if (from) { params.push(from); clauses.push(`date_key >= $${params.length}`); }
     if (to) { params.push(to); clauses.push(`date_key <= $${params.length}`); }
     if (staffId) { params.push(staffId); clauses.push(`staff_id = $${params.length}`); }
+    if (section) {
+      if (section === 'none') clauses.push('section IS NULL'); // records from before sections existed
+      else { params.push(section); clauses.push(`section = $${params.length}`); }
+    }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const { rows } = await pool.query(`SELECT * FROM logs ${where} ORDER BY ts DESC`, params);
     res.json(rows.map(rowToLog));

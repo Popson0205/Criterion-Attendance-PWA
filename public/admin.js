@@ -166,6 +166,20 @@ function handleAdminAuthError(err) {
 
 /* --- Records tab: live attendance sheet --- */
 
+function sectionLabel(sec) { return sec || '—'; }
+
+// Shared by the on-screen list, CSV export and print so all three always agree.
+function recordsQuery() {
+  const qs = new URLSearchParams();
+  const date = $('#recordDate').value;
+  const staffId = $('#recordStaffFilter').value;
+  const section = $('#recordSectionFilter').value;
+  if (date) qs.set('date', date);
+  if (staffId) qs.set('staffId', staffId);
+  if (section) qs.set('section', section);
+  return qs.toString();
+}
+
 function statusTag(r) {
   if (r.status === 'late') return '<span class="sheet-tag late">LATE</span>';
   if (r.status === 'early') return '<span class="sheet-tag early">EARLY</span>';
@@ -187,14 +201,9 @@ async function refreshRecordsList() {
   // Only bother hitting the network if the Records tab is actually visible.
   if (!document.getElementById('tab-records').classList.contains('active')) return;
 
-  const date = $('#recordDate').value;
-  const staffId = $('#recordStaffFilter').value;
   let rows = [];
   try {
-    const qs = new URLSearchParams();
-    if (date) qs.set('date', date);
-    if (staffId) qs.set('staffId', staffId);
-    rows = await adminApi(`/api/admin/logs?${qs.toString()}`);
+    rows = await adminApi(`/api/admin/logs?${recordsQuery()}`);
   } catch (err) {
     if (handleAdminAuthError(err)) return;
     toast('Could not load records.');
@@ -213,6 +222,7 @@ async function refreshRecordsList() {
       <td>${fmtTime(new Date(r.timestamp))}</td>
       <td>${escapeHtml(r.staffId)}</td>
       <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(sectionLabel(r.section))}</td>
       <td><span class="sheet-tag ${r.type}">${r.type === 'in' ? 'IN' : 'OUT'}</span></td>
       <td>${statusTag(r)}</td>`;
     body.appendChild(tr);
@@ -227,16 +237,14 @@ function startRecordsPolling() {
 
 $('#recordDate').addEventListener('change', refreshRecordsList);
 $('#recordStaffFilter').addEventListener('change', refreshRecordsList);
+$('#recordSectionFilter').addEventListener('change', refreshRecordsList);
 
 $('#btnExportCsv').addEventListener('click', async () => {
   const date = $('#recordDate').value;
-  const staffId = $('#recordStaffFilter').value;
+  const section = $('#recordSectionFilter').value;
   let rows;
   try {
-    const qs = new URLSearchParams();
-    if (date) qs.set('date', date);
-    if (staffId) qs.set('staffId', staffId);
-    rows = await adminApi(`/api/admin/logs?${qs.toString()}`);
+    rows = await adminApi(`/api/admin/logs?${recordsQuery()}`);
   } catch (err) {
     if (handleAdminAuthError(err)) return;
     toast('Could not export — check your connection.');
@@ -245,10 +253,10 @@ $('#btnExportCsv').addEventListener('click', async () => {
   if (!rows.length) { toast('No records to export.'); return; }
 
   rows.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  const header = ['Staff ID', 'Name', 'Role', 'Type', 'Date', 'Time', 'Status', 'Distance from fence (m)'];
+  const header = ['Staff ID', 'Name', 'Role', 'Section', 'Type', 'Date', 'Time', 'Status', 'Distance from fence (m)'];
   const csvRows = rows.map(r => {
     const d = new Date(r.timestamp);
-    return [r.staffId, r.name, r.role, r.type === 'in' ? 'Sign In' : 'Sign Out', r.dateKey, fmtTime(d), r.status, r.distance]
+    return [r.staffId, r.name, r.role, sectionLabel(r.section), r.type === 'in' ? 'Sign In' : 'Sign Out', r.dateKey, fmtTime(d), r.status, r.distance]
       .map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
   });
   const csv = [header.join(','), ...csvRows].join('\n');
@@ -256,10 +264,29 @@ $('#btnExportCsv').addEventListener('click', async () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `attendance_${date || 'all'}.csv`;
+  const secTag = section === 'none' ? 'nosection' : (section ? section.toLowerCase() : 'all-sections');
+  a.download = `attendance_${date || 'all'}_${secTag}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 });
+
+/* --- Print: prints whatever the current filters show (date / section / staff) --- */
+
+$('#btnPrint').addEventListener('click', async () => {
+  await refreshRecordsList(); // make sure the sheet is current before printing
+  const section = $('#recordSectionFilter').value;
+  const staffSel = $('#recordStaffFilter');
+  const date = $('#recordDate').value;
+  const sectionText = section === 'none' ? 'No section (old records)' : (section ? `${section} Section` : 'All Sections');
+  $('#printSchool').textContent = state.settings.schoolName || DEFAULT_SETTINGS.schoolName;
+  $('#printTitle').textContent = `Staff Attendance List — ${sectionText}`;
+  const staffText = staffSel.value ? ` · Staff: ${staffSel.options[staffSel.selectedIndex].text}` : '';
+  const dateText = date ? fmtDateLong(new Date(date + 'T00:00:00')) : 'All dates';
+  $('#printMeta').textContent = `${dateText}${staffText} · Printed ${fmtDateLong(new Date())} ${fmtTime(new Date())}`;
+  $('#printHeader').hidden = false;
+  window.print();
+});
+window.addEventListener('afterprint', () => { $('#printHeader').hidden = true; });
 
 /* --- Analytics tab: comparative dashboard + per-teacher score card --- */
 

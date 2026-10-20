@@ -28,7 +28,8 @@ let state = {
   settings: { ...DEFAULT_SETTINGS },
   staff: [],
   geo: { status: 'checking', lat: null, lng: null, distance: null },
-  watchId: null
+  watchId: null,
+  section: null // 'Primary' | 'Secondary' — must be chosen before signing in/out
 };
 
 /* ---------------------- Device identity (for device-binding) ---------------------- */
@@ -213,9 +214,10 @@ function populateStaffSelect() {
 function updateSignButtons() {
   const hasStaff = !!$('#staffSelect').value;
   const hasPin = $('#staffPin').value.trim().length >= 4;
+  const hasSection = !!state.section;
   const inFence = state.geo.status === 'inside';
-  $('#btnSignIn').disabled = !(hasStaff && hasPin && inFence);
-  $('#btnSignOut').disabled = !(hasStaff && hasPin && inFence);
+  $('#btnSignIn').disabled = !(hasStaff && hasPin && hasSection && inFence);
+  $('#btnSignOut').disabled = !(hasStaff && hasPin && hasSection && inFence);
 }
 
 $('#staffSelect').addEventListener('change', (e) => {
@@ -224,6 +226,19 @@ $('#staffSelect').addEventListener('change', (e) => {
   updateSignButtons();
 });
 $('#staffPin').addEventListener('input', updateSignButtons);
+
+/* ---------------------- Section (Primary / Secondary) ---------------------- */
+
+function setSection(section) {
+  state.section = section || null;
+  $all('.section-btn').forEach(b => {
+    const on = b.dataset.section === state.section;
+    b.classList.toggle('selected', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  updateSignButtons();
+}
+$all('.section-btn').forEach(b => b.addEventListener('click', () => setSection(b.dataset.section)));
 
 $('#btnSignIn').addEventListener('click', () => attemptSignAction('in'));
 $('#btnSignOut').addEventListener('click', () => attemptSignAction('out'));
@@ -234,6 +249,7 @@ async function attemptSignAction(type) {
   const staffMember = state.staff.find(s => s.staffId === staffId);
   if (!staffMember) { toast('Please select your name first.'); return; }
   if (pin.length < 4) { toast('Enter your 4-digit PIN.'); return; }
+  if (!state.section) { toast('Please select your section (Primary or Secondary).'); return; }
   if (state.geo.status !== 'inside') { toast('You need to be inside the school perimeter to sign in or out.'); return; }
 
   $('#btnSignIn').disabled = true;
@@ -243,13 +259,14 @@ async function attemptSignAction(type) {
       method: 'POST',
       body: JSON.stringify({
         staffId: staffMember.staffId, type, lat: state.geo.lat, lng: state.geo.lng,
-        pin, deviceId: getDeviceId()
+        pin, deviceId: getDeviceId(), section: state.section
       })
     });
     showResult(record);
     $('#staffSelect').value = '';
     $('#staffIdDisplay').value = '';
     $('#staffPin').value = '';
+    setSection(null);
   } catch (err) {
     $('#staffPin').value = ''; // never leave a wrong/used PIN sitting in the field
     if (err.status === 403) {
@@ -269,7 +286,7 @@ function showResult(record) {
   icon.className = 'result-icon';
   icon.textContent = '✓';
   $('#resultTitle').textContent = record.type === 'in' ? 'Signed in' : 'Signed out';
-  $('#resultSub').textContent = `Welcome, ${record.name.split(' ')[0]}`;
+  $('#resultSub').textContent = `Welcome, ${record.name.split(' ')[0]}` + (record.section ? ` · ${record.section} Section` : '');
   $('#resultTime').textContent = fmtTime(new Date(record.timestamp));
 
   if (record.status === 'late') {

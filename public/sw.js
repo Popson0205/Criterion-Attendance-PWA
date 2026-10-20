@@ -1,4 +1,4 @@
-const CACHE = 'cac-attendance-v5';
+const CACHE = 'cac-attendance-v6';
 const ASSETS = [
   './',
   './index.html',
